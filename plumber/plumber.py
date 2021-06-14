@@ -6,8 +6,7 @@ from plumber.zernike import get_zcoeffs, zernikeBeam
 
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)-15s %(levelname)s: %(message)s",
-                        level=logging.INFO)
+logging.basicConfig(format="%(asctime)-15s %(levelname)s: %(message)s")
 
 ctx = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings = ctx)

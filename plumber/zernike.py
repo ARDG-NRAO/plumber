@@ -165,7 +165,12 @@ class zernikeBeam():
 
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
-        unit = template_csys['spectral2']['unit']
+        ia.close()
+
+        try:
+            unit = template_csys['spectral2']['unit']
+        except KeyError:
+            unit = template_csys['spectral1']['unit']
 
         if unit.lower() == 'hz':
             fac = 1
@@ -176,7 +181,11 @@ class zernikeBeam():
         else:
             raise ValueError("Unknown unit in image.")
 
-        freq = template_csys['spectral2']['restfreq']
+        try:
+            freq = template_csys['spectral2']['restfreq']
+        except KeyError:
+            freq = template_csys['spectral1']['restfreq']
+
         lambd = 299792458/(freq*fac)
 
         outname = 'fft.im'
@@ -202,10 +211,15 @@ class zernikeBeam():
         npix = self.dish_dia*eta/lambd
         npix = int(np.ceil(npix/cdelt))
 
+        if npix < 10:
+            npix *= 2
+            cdelt /= 2.
+
         # So aperture is centred on a single pixel, to avoid offsets in the image
         if npix % 2 == 0:
             npix += 1
 
+        print("number of pixels in aperture ", npix, cdelt)
         wipe_file(outname)
 
         return int(npix), cdelt
@@ -404,7 +418,6 @@ class zernikeBeam():
 
         [wipe_file(jj) for jj in jonesnames]
         [wipe_file(jj) for jj in padjonesnames]
-        #[wipe_file(jj) for jj in beamnames]
 
         return beamnames
 
