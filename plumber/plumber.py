@@ -12,11 +12,13 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings = ctx)
 @click.argument('imagename', type=click.Path(exists=True))
 @click.argument('CSV', type=click.File())
-@click.option('--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam [default: 8]')
+@click.option('--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
 @click.option('--dish_dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
 @click.option('--islinear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
-def main(imagename, csv, padding, dish_dia, islinear, stokesi):
+@click.option('--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
+@click.option('--parang', type=float, help='Beginning (and optionally end) parallactic angle for the PB', show_default=True)
+def main(imagename, csv, padding, dish_dia, islinear, stokesi, parallel, parang):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -36,7 +38,13 @@ def main(imagename, csv, padding, dish_dia, islinear, stokesi):
     logger.info(f"Image is at {imfreq:.2f} MHz. Model PB will be generated at {zfreq:.2f} MHz")
 
     zb = zernikeBeam()
-    zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia, islinear=islinear, stokesi=stokesi)
+    zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
+                        islinear=islinear, stokesi=stokesi, parang=parang, parallel=parallel)
+
     jones_beams = zb.gen_jones_beams()
     stokes_beams = zb.jones_to_mueller(jones_beams)
+
     zb.regrid_to_template(stokes_beams, imagename)
+
+    #if parang is not None:
+        #stokes_beams = zb.rotate_beam(stokes_beams, parang)

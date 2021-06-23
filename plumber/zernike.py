@@ -8,7 +8,13 @@ parsing
 import shutil
 import pandas as pd
 import numpy as np
+
+from scipy.ndimage import rotate
+
 from copy import deepcopy
+
+import multiprocessing
+from functools import partial, wraps
 
 import logging
 logger = logging.getLogger(__name__)
@@ -20,6 +26,17 @@ from plumber.misc import wipe_file
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
+
+
+def background(f):
+    @wraps(f)
+    async def wrapped(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        # Parliament funkadelic sends their regards
+        p_func = partial(f, *args, **kwargs)
+        return await loop.run_in_executor(ProcessPoolExecutor(), p_func)
+
+    return wrapped
 
 
 def get_zcoeffs(csv, imfreq):
@@ -62,9 +79,10 @@ class zernikeBeam():
         self.padfac = None
         self.dish_dia = None
         self.islinear = None
+        self.parallel = False
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False):
+    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parallel=False):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -90,6 +108,8 @@ class zernikeBeam():
         self.npix, self.cdelt_aperture = self.get_npix_aperture(templateim)
 
         self.padfac = int(padfac)
+        self.parallel = parallel
+        self.parang = parang
 
         # In MHz
         self.freq = df['freq'].unique()[0]
@@ -219,7 +239,6 @@ class zernikeBeam():
         if npix % 2 == 0:
             npix += 1
 
-        print("number of pixels in aperture ", npix, cdelt)
         wipe_file(outname)
 
         return int(npix), cdelt
@@ -352,6 +371,12 @@ class zernikeBeam():
         else:
             paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
+        if self.parang != None:
+            paddat_r = rotate(paddat.real, angle=self.parang, reshape=False)
+            paddat_i = rotate(paddat.imag, angle=self.parang, reshape=False)
+
+            paddat = paddat_r + 1j*paddat_i
+
         return paddat
 
 
@@ -382,6 +407,7 @@ class zernikeBeam():
             zreal = self.gen_zernike_surface(sdf['real'].values, xx, yy)
             zimag = self.gen_zernike_surface(sdf['imag'].values, xx, yy)
 
+
             zaperture = zreal + 1j*zimag
             zaperture[maskidx] = 0
 
@@ -399,6 +425,7 @@ class zernikeBeam():
             ia.close()
 
             paddat = self.pad_image(dat)
+
             ia.fromarray(pp, paddat, linear=True)
             ia.close()
 
@@ -486,6 +513,31 @@ class zernikeBeam():
 
         return stokesnames
 
+    def _do_regrid(self, inname, templatecoord, outcsys):
+        """
+        Actually perform the regird. Abstracted into it's own function for
+        multi-processing purposes.
+
+        Inputs:
+        templatecoord       Template coordinate system, dict returned from imregrid()
+        inname              Name of the input image, string
+
+        Returns:
+        None
+        """
+
+        ia.open(inname)
+        ia.setcoordsys(outcsys)
+        ia.close()
+
+        outname = f'tmp_{inname}.im'
+        wipe_file(outname)
+
+        imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+
+        shutil.rmtree(inname)
+        shutil.move(outname, inname)
+
 
     def regrid_to_template(self, stokes_beams, templateim):
         """
@@ -522,18 +574,57 @@ class zernikeBeam():
         outcsys['direction0']['latpole'] = templatecoord['csys']['direction0']['latpole']
         outcsys['direction0']['longpole'] = templatecoord['csys']['direction0']['longpole']
 
-        for iss, ss in enumerate(stokes_beams):
-            if self.do_stokesi_only and iss > 0:
-                    break
+        _do_regrid_partial = partial(self._do_regrid, templatecoord=templatecoord, outcsys=outcsys)
 
-            ia.open(ss)
-            ia.setcoordsys(outcsys)
-            ia.close()
+        if self.parallel and not self.do_stokesi_only:
+            pool = multiprocessing.Pool(4)
+            pool.map(_do_regrid_partial, stokes_beams)
+        else:
+            for iss, ss in enumerate(stokes_beams):
+                if self.do_stokesi_only and iss > 0:
+                        break
 
-            outname = 'tmp.im'
-            wipe_file(outname)
+                self._do_regrid(ss, templatecoord, outcsys)
 
-            imregrid(ss, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
-            shutil.rmtree(ss)
-            shutil.move(outname, ss)
 
+    def _do_rotate(self, imname, parang):
+        """
+        Rotate the input image by parang degrees in place.
+
+        Inputs:
+        imname          Input image name, string
+        parang          Parallactic angle in deg, float
+
+        Returns:
+        None
+        """
+
+        tmpname = 'tmp_' + imname
+        ia.open(imname)
+        ia.rotate(outfile=tmpname, pa=f'{parang}deg')
+        ia.close()
+
+        shutil.move(tmpname, imname)
+
+    def rotate_beam(self, stokes_beams, parang):
+        """
+        Rotate the beam by parang degrees
+
+        Inputs:
+        stokes_beams    Names of the input beams, array of strings
+        parang          Parallactic angle in deg, float
+
+        Returns:
+        stokes_beams    Rotated beams (in place), array of strings
+        """
+
+        if self.parallel and not self.do_stokesi_only:
+            _do_rotate_partial = partian(self._do_rotate, parang=parang)
+            pool = multiprocessing.Pool(4)
+            pool.map(_do_rotate_partial, stokes_beams)
+        else:
+            for iss, ss in enumerate(stokes_beams):
+                if self.do_stokesi_only and iss > 0:
+                        break
+
+                self._do_rotate(ss, parang)
