@@ -18,25 +18,12 @@ from functools import partial, wraps
 
 import logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(format="%(asctime)-15s %(levelname)s: %(message)s",
-                        level=logging.INFO)
 
 from plumber.misc import wipe_file
 
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
-
-
-def background(f):
-    @wraps(f)
-    async def wrapped(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        # Parliament funkadelic sends their regards
-        p_func = partial(f, *args, **kwargs)
-        return await loop.run_in_executor(ProcessPoolExecutor(), p_func)
-
-    return wrapped
 
 
 def get_zcoeffs(csv, imfreq):
@@ -372,8 +359,26 @@ class zernikeBeam():
             paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
         if self.parang != None:
-            paddat_r = rotate(paddat.real, angle=self.parang, reshape=False)
-            paddat_i = rotate(paddat.imag, angle=self.parang, reshape=False)
+            if len(self.parang) == 1:
+                logger.info(f"Rotating to parallactic angle {self.parang}")
+                parang = self.parang[0]
+                paddat_r = rotate(paddat.real, angle=parang, reshape=False)
+                paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
+            elif len(self.parang) == 2:
+                logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
+                paddat_r= 0
+                paddat_i= 0
+                npa = 0
+                # Average over PA
+                for pp in np.linspace(self.parang[0], self.parang[1], 5):
+                    paddat_r += rotate(paddat.real, angle=pp, reshape=False)
+                    paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
+                    npa += 1
+
+                paddat_r /= npa
+                paddat_i /= npa
+            else:
+                raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
 
             paddat = paddat_r + 1j*paddat_i
 
@@ -406,7 +411,6 @@ class zernikeBeam():
 
             zreal = self.gen_zernike_surface(sdf['real'].values, xx, yy)
             zimag = self.gen_zernike_surface(sdf['imag'].values, xx, yy)
-
 
             zaperture = zreal + 1j*zimag
             zaperture[maskidx] = 0
