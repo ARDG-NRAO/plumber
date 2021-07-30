@@ -358,7 +358,7 @@ class zernikeBeam():
         else:
             paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
-        if self.parang != None:
+        if len(self.parang) > 0:
             if len(self.parang) == 1:
                 logger.info(f"Rotating to parallactic angle {self.parang}")
                 parang = self.parang[0]
@@ -569,6 +569,8 @@ class zernikeBeam():
         imcdelt = (imextent/shape[0])
 
         templatecoord = imregrid(templateim)
+        # We are only generating one stokes plane at a time, so force stokes planes = 1
+        templatecoord['shap'][-1] = 1
 
         crpix = np.unravel_index(np.argmax(dat), shape)
         outcsys = deepcopy(templatecsys)
