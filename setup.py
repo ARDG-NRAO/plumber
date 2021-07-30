@@ -5,7 +5,7 @@ import numpy
 
 setup (
     name='plumber',
-    version='0.10',
+    version='0.20',
     packages=find_packages(),
     include_package_data=True,
     include_dirs=[numpy.get_include()],
