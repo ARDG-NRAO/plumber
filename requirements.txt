@@ -3,4 +3,6 @@ astropy
 click
 matplotlib>=2.0.0
 pandas
-casatools
+scipy
+casatools>=6.2
+casatasks>=6.2

@@ -12,6 +12,7 @@ setup (
     entry_points="""
     [console_scripts]
     plumber=plumber.plumber:main
+    parang_finder=plumber.parang_finder:main
     """
 )
 
