@@ -1,5 +1,7 @@
 # Plumber
 
+[![DOI](https://zenodo.org/badge/402479973.svg)](https://zenodo.org/badge/latestdoi/402479973)
+
 Image plane polarization leakage correction. Uses Zernike models of antenna
 apertures to generate the primary beam across the relevant field of view.
 

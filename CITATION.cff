@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Sekhar"
+  given-names: "Srikrishna"
+  orcid: "https://orcid.org/0000-0002-8418-9001"
+- family-names: "Jagannathan"
+  given-names: "Preshanth"
+  orcid: "https://orcid.org/0000-0002-5825-9635"
+
+title: "Plumber"
+version: 0.1
+doi: 10.5281/zenodo.5484098
+date-released: 2021-09-07
+url: "https://github.com/Kitchi/plumber"
