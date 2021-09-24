@@ -1,19 +1,26 @@
-# Plumber
+<div align="center">
+  
+  # Plumber
 
-[![DOI](https://zenodo.org/badge/402479973.svg)](https://zenodo.org/badge/latestdoi/402479973)
+  Image plane polarization leakage correction for radio interferometers
+  
+  [![arXiv](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)](https://arxiv.org/abs/2107.10009)
+  [![DOI](https://zenodo.org/badge/402479973.svg)](https://zenodo.org/badge/latestdoi/402479973)
+  
+</div>
+  
 
-Image plane polarization leakage correction. Uses Zernike models of antenna
-apertures to generate the primary beam across the relevant field of view.
+Plumber generates full Stokes primary beam models for radio interferometers using Zernike model coefficients of the antenna aperture illumination pattern. The generated PB models are scaled and matched to the input image coordinate system in order to use standard PB correction tools (such as those found in [CASA](https://casadocs.readthedocs.io/en/stable/)).
 
-Requires modular CASA 6 (casatools and casatasks) and the relevant coefficient
-CSV file for the telescope and band in question.
+As of 2021 this supports VLA S Band and MeerKAT L band observations, although support for other telescopes and bands is simply a question of providing the coefficients via the input CSV file. 
 
-As of June 2021 this supports VLA S Band and MeerKAT L band observations.
 
 ## Installation
 Clone the repo, and then run 
 
-```pip install -e setup.py```
+```pip install setup.py```
+
+Please look at `requirements.txt` if `pip` is unable to automatically resolve all the dependencies. 
 
 
 ## Usage:
@@ -63,7 +70,7 @@ Options:
 ```
 
 
-## Determining parallactic angle
+### Determining parallactic angle
 
 In order to rotate the beams to the right parallactic angle, the
 `parang_finder` helper script is bundled with `plumber`. 
@@ -83,8 +90,8 @@ Options:
   -h, --help    Show this message and exit.
 ```
 
-## Location of coefficients
+### Location of coefficients
 
-The coefficient files are within the `plumber/data/` directory of this
-repository. When the repository is cloned locally, the CSV files can be passed
+The coefficient files are within the `./plumber/data/` directory of this
+repository. When the repository is cloned locally, the path of the CSV files can be passed
 in via command line.
