@@ -1,34 +1,18 @@
 #!/usr/bin/env python3
 
+import spectral_cube
+print(spectral_cube.__path__)
+
+from spectral_cube import SpectralCube, StokesSpectralCube
 from casatools import image
 ia = image()
 
+from astropy.io.registry import IORegistryError
 
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="%(asctime)-15s %(levelname)s: %(message)s",
                         level=logging.INFO)
-
-def check_if_cube(summary):
-    """
-    Check if the input shape is a cube
-
-    Inputs:
-    summary     Dict, output of ia.summary()
-
-    Returns:
-    is_cube     Flag to indicate if the image is a cube, bool
-    """
-
-    shape = summary['shape']
-    freqidx = [ff for ff, unit in enumerate(summary['axisunits']) if 'hz' in unit.lower()][0]
-    stokesidx = [ff for ff, unit in enumerate(summary['axisunits']) if len(unit) == 0][0]
-
-    if shape[freqidx] > 1 or shape[stokesidx] > 1:
-        return True
-    else:
-        return False
-
 
 def parse_image(imagename):
     """
@@ -44,25 +28,21 @@ def parse_image(imagename):
     is_cube             Flag to indicate if the image is a cube, bool
     """
 
-    ia.open(imagename)
-    shape = ia.shape()
-    csys = ia.coordsys().torecord()
-    summary = ia.summary(list=False, verbose=False)
-    ia.close()
+    try:
+        cube = StokesSpectralCube.read(imagename)
+    except IORegistryError:
+        # Probably CASA image
+        cube = StokesSpectralCube.read(imagename, format='casa_image')
 
-    is_cube = check_if_cube(summary)
+    if len(cube.shape) > 3 and cube.shape[-1] > 1:
+        is_stokes_cube = True
+    else:
+        is_stokes_cube = False
+
+    shape = cube.shape
     imsize = [shape[0], shape[1]]
 
-    freqidx = [ff for ff, unit in enumerate(summary['axisunits']) if 'hz' in unit.lower()][0]
-    reffreq = summary['refval'][freqidx]
+    # This is always a list
+    imfreqs = cube.stokes_data['I'].spectral_axis
 
-    if summary['axisunits'][freqidx] == 'Hz':
-        factor = 1e6
-    elif summary['axisunits'][freqidx] == 'MHz':
-        factor = 1
-    elif summary['axisunits'][freqidx] == 'GHz':
-        factor = 1e-3
-
-    reffreq /= factor
-
-    return imsize, reffreq, is_cube
+    return imsize, imfreqs, is_stokes_cube
