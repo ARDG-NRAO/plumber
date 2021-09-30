@@ -43,16 +43,23 @@ def get_zcoeffs(csv, imfreq):
     nstokes     Number of stokes in the CSV, integer
     """
 
+    zdflist = []
+    freqlist = []
+
     df = pd.read_csv(csv, skipinitialspace=True)
     nstokes = df['#stokes'].unique().size
     freqs = df['freq'].unique()
 
-    idx = np.argmin(np.abs(freqs - imfreq))
-    zfreq = freqs[idx]
+    for freq in imfreq:
+        idx = np.argmin(np.abs(freqs - imfreq))
+        zfreq = freqs[idx]
 
-    zdf = df[df['freq'] == zfreq]
+        zdf = df[df['freq'] == zfreq]
 
-    return zdf, zfreq, nstokes
+        zdflist.append(zdf)
+        freqlist.append(zfreq)
+
+    return zdflist, freqlist, nstokes
 
 
 
