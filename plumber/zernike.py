@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 
 from scipy.ndimage import rotate
+import astropy.units as u
 
 from copy import deepcopy
 
@@ -50,8 +51,10 @@ def get_zcoeffs(csv, imfreq):
     nstokes = df['#stokes'].unique().size
     freqs = df['freq'].unique()
 
-    for freq in imfreq:
-        idx = np.argmin(np.abs(freqs - imfreq))
+    #imfreq is an array astropy.units, so convert to right unit and grab
+    #numerical value
+    for ifreq in imfreq:
+        idx = np.argmin(np.abs(freqs - ifreq.to(u.MHz).value))
         zfreq = freqs[idx]
 
         zdf = df[df['freq'] == zfreq]
