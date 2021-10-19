@@ -7,3 +7,4 @@ scipy
 casatools>=6.2
 casatasks>=6.2
 astroplan>=0.8
+pytest
