@@ -1,0 +1,3 @@
+[submodule "plumber-data"]
+	path = plumber-data
+	url = https://github.com/ARDG-NRAO/plumber-data
