@@ -6,6 +6,7 @@ import os
 from astroplan.constraints import observability_table
 import click
 import numpy as np
+from math import sin, cos, atan2, pi
 
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -52,8 +53,8 @@ class parallctic_angle(mset):
         super().__init__()
     def __init__(self) -> None:
         parallctic_angle = []
-        hour_angle
-        observatory_name- ""
+        hour_angle = []
+        observatory_name = "VLA"
         observatory_latitude = ""
         observatory_longitude = ""
         source_dec = ""
@@ -72,7 +73,7 @@ class parallctic_angle(mset):
         #   thus:
         #   tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
         """
-        z = zeros(
+        z = np.zeros(
             (1), dtype={'names': ['parangle', 'slope'], 'formats': ['f8', 'i4']})
         slope = 1.0
         eta = atan2(cos(lat)*sin(HA), (sin(lat) *
@@ -91,7 +92,7 @@ class parallctic_angle(mset):
         me.doframe(me.observatory(observatory))
         tm = me.epoch('UTC', str(time)+'s')
         last = me.measure(tm, 'LAST')['m0']['value']
-        last -= floor(last)
+        last -= np.floor(last)
         lst = qa.convert(str(last)+'d', 'rad')
 
         ha = lst['value']-ra
