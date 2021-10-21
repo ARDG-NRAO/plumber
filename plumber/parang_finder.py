@@ -3,6 +3,7 @@
 import logging
 from _typeshed import Self
 import os
+from typing import Any
 from astroplan.constraints import observability_table
 import click
 import numpy as np
@@ -48,19 +49,67 @@ ctx = dict(help_option_names=['-h', '--help'])
               help='Name of field to consider, must match exactly the name in the MS. '
               'If this is not specified, will use the first field with the '
               'TARGET intent.')
-class parallctic_angle(mset):
+class parallctic_angle():
     def __init__(self) -> None:
         super().__init__()
-    def __init__(self) -> None:
-        parallctic_angle = []
-        hour_angle = []
-        observatory_name = "VLA"
-        observatory_latitude = ""
-        observatory_longitude = ""
-        source_dec = ""
-        source_times = []
-        scan_times = []
-    def parangle(HA, lat, dec):
+    def __init__(self,mset) -> None:
+        self.parallctic_angle = []
+        self.hour_angle = []
+        self.telescope_name = "VLA"
+        self.telescope_pos = []
+        self.telescope_latitude = ""
+        self.telescope_longitude = ""
+        self.source_dec = ""
+        self.source_times = []
+        self.scan_times = []
+        self.field_names=[]
+        self.target_fields = []   
+        self.fillattributes(mset)
+
+    def fillmsattributes(self,measurement_set,field)->None:
+        msmd.open(measurement_set)
+        self.telescope_name = msmd.observatorynames()
+        self.telescope_pos = msmd.observatoryposition()
+
+        # In coordinates of rad, rad, m
+        self.telescope_pos = [np.rad2deg(self.telescope_pos['m0']['value']),
+                     np.rad2deg(self.telescope_pos['m1']['value']),
+                     self.telescope_pos['m2']['value']]
+
+        logger.info(f"Telescope {self.telescope_name[0]} is at co-ordinates "
+                f"{self.telescope_pos[0]:.2f} deg, "
+                f"{self.telescope_pos[1]:.2f} deg, "
+                f"{self.telescope_pos[2]:.2f} m")
+        self.field_names = msmd.fieldnames()
+        self.target_fields = msmd.fieldsforintent('TARGET', asnames=True)
+        if len(self.field_names) == 0:
+            raise ValueError(
+            "No fields found in input MS. Please check your inputs.")
+        if field is None:
+            if len(self.target_fields) == 0:
+                logger.warning(
+                    f'No fields found with intent TARGET. Using field 0 {self.field_names[0]}')
+                logger.warning(
+                    'If this is not desired, pass in --field on the command line.')
+                field = self.field_names[0]
+
+            elif len(self.target_fields) > 1:
+                logger.warning(
+                    f'Multiple fields found with intent TARGET. Using the first one {self.target_fields[0]}')
+                field = self.target_fields[0]
+
+            elif len(self.target_fields) == 1:
+                logger.info(f'Using field {self.target_fields[0]}')
+                field = self.target_fields[0]
+
+        else:
+            if field not in self.field_names:
+                outmsg = f"Input field {field} not found in MS. Available fields are {','.join(self.field_names)}"
+                raise ValueError(outmsg)
+
+        logger.info(f"Using field {field}")
+
+    def parangle(self,HA, lat, dec):
         """
         #Function to calcualte the parallactic angle.
         #   Equations from:
@@ -86,7 +135,7 @@ class parallctic_angle(mset):
 
         return z
 
-    def hourangle(ra, dec, time, timeunit='s', observatory='VLA'):
+    def hourangle(self, ra, dec, time, timeunit='s', observatory='VLA'):
         """#Function to compute the hourangle of a source at a given time, given an observatory name
         This function uses the measures tool to compute the epoch and the corresponding position"""
         me.doframe(me.observatory(observatory))
