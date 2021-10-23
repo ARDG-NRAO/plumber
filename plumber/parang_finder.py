@@ -53,18 +53,21 @@ class parallctic_angle():
     def __init__(self) -> None:
         super().__init__()
     def __init__(self,mset) -> None:
-        self.parallctic_angle = []
+        self.parangs = []
+        self.parang_start=[]
+        self.parang_end = []
+        self.parang_mid = []
         self.hour_angle = []
         self.telescope_name = "VLA"
         self.telescope_pos = []
         self.telescope_latitude = ""
         self.telescope_longitude = ""
-        self.source_dec = ""
+        self.source_pos = []
         self.source_times = []
         self.scan_times = []
         self.field_names=[]
         self.target_fields = []   
-        self.fillattributes(mset)
+        self.fillmsattributes(mset)
 
     def fillmsattributes(self,measurement_set,field)->None:
         msmd.open(measurement_set)
@@ -108,6 +111,27 @@ class parallctic_angle():
                 raise ValueError(outmsg)
 
         logger.info(f"Using field {field}")
+            # CASA likes to store the time as mjd seconds
+        self.source_times = msmd.timesforfield(msmd.fieldsforname(field)[0])
+        self.source_times = Time(self.source_times/(3600.*24), format='mjd')
+
+        self.source_pos = msmd.phasecenter(msmd.fieldsforname(field)[0])
+        self.source_pos = SkyCoord(
+        self.source_pos['m0']['value']*u.rad, self.source_pos['m1']['value']*u.rad, unit='radian')
+        logger.info(f"Co-ordinates of source are {self.source_pos.to_string('hmsdms')}")
+
+        self.observer = Observer(longitude=self.telescope_pos[0]*u.deg, latitude=self.telescope_pos[1]*u.deg,
+                   elevation=self.telescope_pos[2]*u.m, name=self.telescope_name[0], timezone='Etc/GMT0')
+
+        self.parangs = np.rad2deg(self.observer.parallactic_angle(self.source_times, self.source_pos))
+
+        self.parang_start = self.parangs[0]
+        self.parang_mid = self.parangs[self.parangs.size//2]
+        self.parang_end = self.parangs[-1]
+
+        logger.info(f"First parallactic angle is : {self.parang_start:.2f}")
+        logger.info(f"Middle parallactic angle is : {self.parang_mid:.2f}")
+        logger.info(f"Last parallactic angle is : {self.parang_end:.2f}")
 
     def parangle(self,HA, lat, dec):
         """

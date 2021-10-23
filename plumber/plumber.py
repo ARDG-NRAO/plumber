@@ -3,6 +3,7 @@
 import click
 from plumber.image import parse_image
 from plumber.zernike import get_zcoeffs, zernikeBeam
+from plumber.parang_finder import parallctic_angle
 
 import logging
 
