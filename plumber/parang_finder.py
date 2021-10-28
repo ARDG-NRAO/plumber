@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 
-import logging
-from _typeshed import Self
 import os
-from typing import Any
-from astroplan.constraints import observability_table
+import logging
+
 import click
 import numpy as np
-from math import sin, cos, atan2, pi
 
-import astropy.units as u
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 
+import astropy.units as u
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
+
 from astroplan import Observer
+from astroplan.constraints import observability_table
 
 from casatools import msmetadata, measures, quanta
 msmd = msmetadata()
 qa = quanta()
 me = measures()
-
 
 # Add colours for warnings and errors
 logging.addLevelName(
@@ -42,137 +40,12 @@ logger = logging.getLogger()
 
 ctx = dict(help_option_names=['-h', '--help'])
 
-
 @click.command(context_settings=ctx)
 @click.argument('MS', type=click.Path(exists=True))
 @click.option('--field', type=str, default=None,
               help='Name of field to consider, must match exactly the name in the MS. '
               'If this is not specified, will use the first field with the '
               'TARGET intent.')
-class parallctic_angle():
-    def __init__(self) -> None:
-        super().__init__()
-    def __init__(self,mset) -> None:
-        self.parangs = []
-        self.parang_start=[]
-        self.parang_end = []
-        self.parang_mid = []
-        self.hour_angle = []
-        self.telescope_name = "VLA"
-        self.telescope_pos = []
-        self.telescope_latitude = ""
-        self.telescope_longitude = ""
-        self.source_pos = []
-        self.source_times = []
-        self.scan_times = []
-        self.field_names=[]
-        self.target_fields = []   
-        self.fillmsattributes(mset)
-
-    def fillmsattributes(self,measurement_set,field)->None:
-        msmd.open(measurement_set)
-        self.telescope_name = msmd.observatorynames()
-        self.telescope_pos = msmd.observatoryposition()
-
-        # In coordinates of rad, rad, m
-        self.telescope_pos = [np.rad2deg(self.telescope_pos['m0']['value']),
-                     np.rad2deg(self.telescope_pos['m1']['value']),
-                     self.telescope_pos['m2']['value']]
-
-        logger.info(f"Telescope {self.telescope_name[0]} is at co-ordinates "
-                f"{self.telescope_pos[0]:.2f} deg, "
-                f"{self.telescope_pos[1]:.2f} deg, "
-                f"{self.telescope_pos[2]:.2f} m")
-        self.field_names = msmd.fieldnames()
-        self.target_fields = msmd.fieldsforintent('TARGET', asnames=True)
-        if len(self.field_names) == 0:
-            raise ValueError(
-            "No fields found in input MS. Please check your inputs.")
-        if field is None:
-            if len(self.target_fields) == 0:
-                logger.warning(
-                    f'No fields found with intent TARGET. Using field 0 {self.field_names[0]}')
-                logger.warning(
-                    'If this is not desired, pass in --field on the command line.')
-                field = self.field_names[0]
-
-            elif len(self.target_fields) > 1:
-                logger.warning(
-                    f'Multiple fields found with intent TARGET. Using the first one {self.target_fields[0]}')
-                field = self.target_fields[0]
-
-            elif len(self.target_fields) == 1:
-                logger.info(f'Using field {self.target_fields[0]}')
-                field = self.target_fields[0]
-
-        else:
-            if field not in self.field_names:
-                outmsg = f"Input field {field} not found in MS. Available fields are {','.join(self.field_names)}"
-                raise ValueError(outmsg)
-
-        logger.info(f"Using field {field}")
-            # CASA likes to store the time as mjd seconds
-        self.source_times = msmd.timesforfield(msmd.fieldsforname(field)[0])
-        self.source_times = Time(self.source_times/(3600.*24), format='mjd')
-
-        self.source_pos = msmd.phasecenter(msmd.fieldsforname(field)[0])
-        self.source_pos = SkyCoord(
-        self.source_pos['m0']['value']*u.rad, self.source_pos['m1']['value']*u.rad, unit='radian')
-        logger.info(f"Co-ordinates of source are {self.source_pos.to_string('hmsdms')}")
-
-        self.observer = Observer(longitude=self.telescope_pos[0]*u.deg, latitude=self.telescope_pos[1]*u.deg,
-                   elevation=self.telescope_pos[2]*u.m, name=self.telescope_name[0], timezone='Etc/GMT0')
-
-        self.parangs = np.rad2deg(self.observer.parallactic_angle(self.source_times, self.source_pos))
-
-        self.parang_start = self.parangs[0]
-        self.parang_mid = self.parangs[self.parangs.size//2]
-        self.parang_end = self.parangs[-1]
-
-        logger.info(f"First parallactic angle is : {self.parang_start:.2f}")
-        logger.info(f"Middle parallactic angle is : {self.parang_mid:.2f}")
-        logger.info(f"Last parallactic angle is : {self.parang_end:.2f}")
-
-    def parangle(self,HA, lat, dec):
-        """
-        #Function to calcualte the parallactic angle.
-        #   Equations from:
-        #   "A treatise on spherical astronomy" By Sir Robert Stawell Ball
-        #   (p. 91, as viewed on Google Books)
-        #   sin(eta)*sin(z) = cos(lat)*sin(HA)
-        #   cos(eta)*sin(z) = sin(lat)*cos(dec) - cos(lat)*sin(dec)*cos(HA)
-        #   Where eta is the parallactic angle, z is the zenith angle, lat is the
-        #   observer's latitude, dec is the declination, and HA is the hour angle.
-        #   thus:
-        #   tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
-        """
-        z = np.zeros(
-            (1), dtype={'names': ['parangle', 'slope'], 'formats': ['f8', 'i4']})
-        slope = 1.0
-        eta = atan2(cos(lat)*sin(HA), (sin(lat) *
-                                          cos(dec)-cos(lat)*sin(dec)*cos(HA)))
-        if(eta < 0):
-            slope = -1.0
-            eta += 2.0*pi
-        z['parangle'] = eta
-        z['slope'] = slope
-
-        return z
-
-    def hourangle(self, ra, dec, time, timeunit='s', observatory='VLA'):
-        """#Function to compute the hourangle of a source at a given time, given an observatory name
-        This function uses the measures tool to compute the epoch and the corresponding position"""
-        me.doframe(me.observatory(observatory))
-        tm = me.epoch('UTC', str(time)+'s')
-        last = me.measure(tm, 'LAST')['m0']['value']
-        last -= np.floor(last)
-        lst = qa.convert(str(last)+'d', 'rad')
-
-        ha = lst['value']-ra
-
-        return ha
-
-
 def main(ms, field):
     """
     Helper script to determine the range of parallactic angles in an input MS.

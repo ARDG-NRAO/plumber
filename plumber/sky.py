@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+
+import os
+import logging
+
+#from typing import Any
+#from _typeshed import Self
+
+import numpy as np
+
+import astropy.units as u
+from astropy.time import Time
+from astropy.coordinates import SkyCoord
+
+from astroplan import Observer
+from astroplan.constraints import observability_table
+
+from casatools import msmetadata, measures, quanta
+msmd = msmetadata()
+qa = quanta()
+me = measures()
+
+# Add colours for warnings and errors
+logging.addLevelName(
+    logging.WARNING, "\033[1;31m%s\033[1;0m" % logging.getLevelName(logging.WARNING))
+logging.addLevelName(
+    logging.ERROR, "\033[1;41m%s\033[1;0m" % logging.getLevelName(logging.ERROR))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)-20s %(levelname)-8s %(message)s',
+    handlers=[
+        logging.FileHandler("plumber.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger()
+
+
+class ParallacticAngle():
+    def __init__(self, mset=None, use_astropy=False) -> None:
+        super().__init__()
+
+        self.parangs = []
+        self.parang_start = []
+        self.parang_end = []
+        self.parang_mid = []
+        self.ha = []
+        self.telescope_name = "VLA"
+        self.telescope_pos = []
+        self.telescope_latitude = ""
+        self.telescope_longitude = ""
+        self.source_pos = []
+        self.source_times = []
+        self.scan_times = []
+        self.field_names = []
+        self.target_fields = []
+
+        if mset is not None:
+            self.fill_ms_attributes(mset)
+
+        self.use_astropy = use_astropy
+
+
+    def fill_ms_attributes(self, measurement_set, field=None) -> None:
+        msmd.open(measurement_set)
+        self.telescope_name = msmd.observatorynames()
+
+        if len(self.telescope_name) > 1:
+            logger.warning(f"Multiple observatory names found : {','.join(self.telescope_name)}. "
+                           f"Using the first one, {self.telesocpe_name[0]}")
+
+        self.telescope_name = self.telescope_name[0]
+
+        self.telescope_pos = msmd.observatoryposition()
+
+        # In coordinates of rad, rad, m
+        self.telescope_pos = [
+                    np.rad2deg(self.telescope_pos['m0']['value']),
+                    np.rad2deg(self.telescope_pos['m1']['value']),
+                    self.telescope_pos['m2']['value']
+        ]
+
+        logger.info(f"Telescope {self.telescope_name[0]} is at co-ordinates "
+                f"{self.telescope_pos[0]:.2f} deg, "
+                f"{self.telescope_pos[1]:.2f} deg, "
+                f"{self.telescope_pos[2]:.2f} m")
+
+        self.field_names = msmd.fieldnames()
+        self.target_fields = msmd.fieldsforintent('TARGET', asnames=True)
+
+        if len(self.field_names) == 0:
+            raise ValueError(
+            "No fields found in input MS. Please check your inputs.")
+
+        if field is None:
+            if len(self.target_fields) == 0:
+                logger.warning(
+                    f'No fields found with intent TARGET. Using field 0 {self.field_names[0]}'
+                )
+
+                logger.warning(
+                    'If this is not desired, pass in --field on the command line.'
+                )
+                field = self.field_names[0]
+            elif len(self.target_fields) > 1:
+                logger.warning(
+                    f'Multiple fields found with intent TARGET. Using the first one {self.target_fields[0]}'
+                )
+                field = self.target_fields[0]
+
+            elif len(self.target_fields) == 1:
+                logger.info(f'Using field {self.target_fields[0]}')
+                field = self.target_fields[0]
+        else:
+            if field not in self.field_names:
+                outmsg = f"Input field {field} not found in MS. Available fields are {', '.join(self.field_names)}"
+                raise ValueError(outmsg)
+
+        # CASA likes to store the time as mjd seconds
+        self.source_times = msmd.timesforfield(msmd.fieldsforname(field)[0])
+        self.source_times = Time(self.source_times/(3600.* 24), format='mjd')
+
+        self.source_pos = msmd.phasecenter(msmd.fieldsforname(field)[0])
+        self.source_pos = SkyCoord(
+                            self.source_pos['m0']['value']*u.rad,
+                            self.source_pos['m1']['value']*u.rad, unit='radian'
+                          )
+
+        logger.info(f"Co-ordinates of source are {self.source_pos.to_string('hmsdms')}")
+
+        if self.use_astropy:
+            self.observer = Observer(longitude=self.telescope_pos[0]*u.deg, latitude=self.telescope_pos[1]*u.deg,
+                    elevation=self.telescope_pos[2]*u.m, name=self.telescope_name[0], timezone='Etc/GMT0')
+
+            self.parangs = np.rad2deg(self.observer.parallactic_angle(self.source_times, self.source_pos))
+
+        else:
+            self.ha = np.asarray([self.hour_angle(self.source_pos.ra.rad, tt,  observatory=self.telescope_name) for tt in self.source_times.mjd * 24 * 3600.])
+            self.ha *= u.rad
+
+            # Store only the parangs, skip the slope
+            self.parangs = np.asarray([self.parallactic_angle(hh, self.telescope_pos[1]*u.deg, self.source_pos.dec.rad)[0] for hh in self.ha])
+            self.parangs *= u.rad
+
+        self.parang_start = self.parangs[0]
+        self.parang_mid = self.parangs[self.parangs.size//2]
+        self.parang_end = self.parangs[-1]
+
+        logger.warn(f"First parallactic angle is : {self.parang_start:.2f}")
+        logger.warn(f"Middle parallactic angle is : {self.parang_mid:.2f}")
+        logger.warn(f"Last parallactic angle is : {self.parang_end:.2f}")
+
+        msmd.close()
+
+
+    def parallactic_angle(self, HA, lat, dec):
+        """
+        Inputs:
+
+        HA      Hour angle, in radian
+        lat     Latitude of observation, in deg
+        dec     Declination of source, in radian
+
+        Returns:
+        eta     Parallactic angle of source, in radian
+
+        Function to calculate the parallactic angle.
+        Equations from:
+        "A treatise on spherical astronomy" By Sir Robert Stawell Ball
+        (p. 91, as viewed on Google Books)
+
+        sin(eta)*sin(z) = cos(lat)*sin(HA)
+        cos(eta)*sin(z) = sin(lat)*cos(dec) - cos(lat)*sin(dec)*cos(HA)
+        Where eta is the parallactic angle, z is the zenith angle, lat is the
+        observer's latitude, dec is the declination, and HA is the hour angle.
+
+        Thus:
+        tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
+        """
+        #z = np.zeros((1), dtype={'names': ['parangle', 'slope'], 'formats': ['f8', 'i4']})
+
+        eta = np.arctan2(
+                np.cos(lat)*np.sin(HA),
+                (np.sin(lat) * np.cos(dec) - np.cos(lat)*np.sin(dec)*np.cos(HA))
+        )
+
+        slope = 1.
+
+        if(eta < 0):
+            slope = -1.0
+            eta += 2.0*np.pi*u.rad
+
+        #z['parangle'] = eta
+        #z['slope'] = slope
+
+        # Cannot do np.asarray() if eta is returned with units, so return without units.
+        return eta.value, slope
+
+
+    def hour_angle(self, ra, time, timeunit='s', observatory='VLA'):
+        """
+        Function to compute the hourangle of a source at a given time, given an
+        observatory name. This function uses the measures tool to compute the
+        epoch and the corresponding position
+
+        Inputs:
+        ra              Right Ascension of object in radians, float
+        time            Timestamp of observation in MJD-seconds, float
+        timeunit        Unit of the sbove timestamp, str
+        observatory     Name of the observatory, str
+
+        Outputs:
+        ha              Hour angle corresponding to the input time stamp, float
+        """
+
+        if hasattr(time, '__len__') and (not isinstance(time, str)):
+            raise ValueError("Input time should be a single float, not an array/list.")
+
+        # CHeck if observatory is valid
+        obslist = me.obslist()
+
+        if observatory.lower() not in [oo.lower() for oo in obslist]:
+            msg = f"Observatory {observatory} is unknown. "
+            msg += f"The ability to add a custom observatory will be added in a future update. "
+            msg += f"Currently the following observatories are known : {','.join(obslist)}"
+            raise ValueError(msg)
+
+        me.doframe(me.observatory(observatory))
+
+        tm = me.epoch('UTC', str(time) + f'{timeunit}')
+        last = me.measure(tm, 'LAST')['m0']['value']
+        last -= np.floor(last)
+        lst = qa.convert(str(last)+'d', 'rad')
+
+        ha = lst['value'] - ra
+
+        return ha
