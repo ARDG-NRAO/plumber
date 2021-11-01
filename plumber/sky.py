@@ -39,28 +39,27 @@ logger = logging.getLogger()
 
 
 class ParallacticAngle():
-    def __init__(self, mset=None, use_astropy=False) -> None:
+    def __init__(self, ms=None, use_astropy=False) -> None:
         super().__init__()
 
         self.parangs = []
-        self.parang_start = []
-        self.parang_end = []
-        self.parang_mid = []
+        self.parang_slope = []
+
         self.ha = []
+
         self.telescope_name = "VLA"
         self.telescope_pos = []
-        self.telescope_latitude = ""
-        self.telescope_longitude = ""
+
         self.source_pos = []
         self.source_times = []
-        self.scan_times = []
+
         self.field_names = []
         self.target_fields = []
 
-        if mset is not None:
-            self.fill_ms_attributes(mset)
-
         self.use_astropy = use_astropy
+
+        if ms is not None:
+            self.fill_ms_attributes(ms)
 
 
     def fill_ms_attributes(self, measurement_set, field=None) -> None:
@@ -76,15 +75,15 @@ class ParallacticAngle():
 
         # Convert from rad, rad, m to deg, deg, m
         self.telescope_pos = [
-                    np.rad2deg(self.telescope_pos['m0']['value']),
-                    np.rad2deg(self.telescope_pos['m1']['value']),
+                    self.telescope_pos['m0']['value'],
+                    self.telescope_pos['m1']['value'],
                     self.telescope_pos['m2']['value']
         ]
 
         logger.info(f"Telescope {self.telescope_name[0]} is at co-ordinates "
-                f"{self.telescope_pos[0]:.2f} deg, "
-                f"{self.telescope_pos[1]:.2f} deg, "
-                f"{self.telescope_pos[2]:.2f} m")
+                f"{np.rad2deg(self.telescope_pos[0]):.2f} deg, "
+                f"{np.rad2deg(self.telescope_pos[1]):.2f} deg, "
+                f"{np.rad2deg(self.telescope_pos[2]):.2f} m")
 
         self.field_names = msmd.fieldnames()
         self.target_fields = msmd.fieldsforintent('TARGET', asnames=True)
@@ -133,26 +132,31 @@ class ParallacticAngle():
         logger.info(f"Co-ordinates of source are {self.source_pos.to_string('hmsdms')}")
 
         if self.use_astropy:
-            self.observer = Observer(longitude=self.telescope_pos[0]*u.deg, latitude=self.telescope_pos[1]*u.deg,
+            self.observer = Observer(longitude=self.telescope_pos[0]*u.rad, latitude=self.telescope_pos[1]*u.rad,
                     elevation=self.telescope_pos[2]*u.m, name=self.telescope_name[0], timezone='Etc/GMT0')
 
             self.parangs = np.rad2deg(self.observer.parallactic_angle(self.source_times, self.source_pos))
+            self.parangs = self.parangs.value
 
         else:
             self.ha = np.asarray([self.hour_angle(self.source_pos.ra.hour, tt.mjd*24*3600.,  observatory=self.telescope_name) for tt in self.source_times])
             #self.ha *= u.rad
 
+            # TODO: This can be very slow with a large number of timestamps/HAs to iterate over.
             # Store only the parangs, skip the slope
             self.parangs = np.asarray([self.parallactic_angle(hh, self.telescope_pos[1], self.source_pos.dec.rad)[0] for hh in self.ha])
             self.parangs = np.rad2deg(self.parangs)
+
+            # Store only the slope
+            self.parang_slope = np.asarray([self.parallactic_angle(hh, self.telescope_pos[1], self.source_pos.dec.rad)[1] for hh in self.ha])
 
         self.parang_start = self.parangs[0]
         self.parang_mid = self.parangs[self.parangs.size//2]
         self.parang_end = self.parangs[-1]
 
-        logger.warn(f"First parallactic angle is : {self.parang_start:.2f}")
-        logger.warn(f"Middle parallactic angle is : {self.parang_mid:.2f}")
-        logger.warn(f"Last parallactic angle is : {self.parang_end:.2f}")
+        logger.debug(f"First parallactic angle is : {self.parang_start:.2f}")
+        logger.debug(f"Middle parallactic angle is : {self.parang_mid:.2f}")
+        logger.debug(f"Last parallactic angle is : {self.parang_end:.2f}")
 
         msmd.close()
 
@@ -180,6 +184,11 @@ class ParallacticAngle():
 
         Thus:
         tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
+
+        NOTE : This function returns a parallactic angle that is consistent with
+        CASA conventions. However it is 2*pi radians different from the
+        parallactic angles calculated using the astropy ecosystem (i.e., via
+        astroquery.Observer)
         """
 
         eta = np.arctan2(
@@ -208,7 +217,7 @@ class ParallacticAngle():
         observatory     Name of the observatory, str
 
         Outputs:
-        ha              Hour angle corresponding to the input time stamp, float
+        ha              Hour angle in rad corresponding to the input time stamp, float
         """
 
         if hasattr(time, '__len__') and (not isinstance(time, str)):
