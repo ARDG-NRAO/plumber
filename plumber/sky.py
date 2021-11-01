@@ -72,10 +72,9 @@ class ParallacticAngle():
                            f"Using the first one, {self.telesocpe_name[0]}")
 
         self.telescope_name = self.telescope_name[0]
-
         self.telescope_pos = msmd.observatoryposition()
 
-        # In coordinates of rad, rad, m
+        # Convert from rad, rad, m to deg, deg, m
         self.telescope_pos = [
                     np.rad2deg(self.telescope_pos['m0']['value']),
                     np.rad2deg(self.telescope_pos['m1']['value']),
@@ -92,7 +91,8 @@ class ParallacticAngle():
 
         if len(self.field_names) == 0:
             raise ValueError(
-            "No fields found in input MS. Please check your inputs.")
+                "No fields found in input MS. Please check your inputs."
+            )
 
         if field is None:
             if len(self.target_fields) == 0:
@@ -103,7 +103,9 @@ class ParallacticAngle():
                 logger.warning(
                     'If this is not desired, pass in --field on the command line.'
                 )
+
                 field = self.field_names[0]
+
             elif len(self.target_fields) > 1:
                 logger.warning(
                     f'Multiple fields found with intent TARGET. Using the first one {self.target_fields[0]}'
@@ -124,8 +126,8 @@ class ParallacticAngle():
 
         self.source_pos = msmd.phasecenter(msmd.fieldsforname(field)[0])
         self.source_pos = SkyCoord(
-                            self.source_pos['m0']['value']*u.rad,
-                            self.source_pos['m1']['value']*u.rad, unit='radian'
+                            self.source_pos['m0']['value'],
+                            self.source_pos['m1']['value'], unit='radian'
                           )
 
         logger.info(f"Co-ordinates of source are {self.source_pos.to_string('hmsdms')}")
@@ -137,12 +139,12 @@ class ParallacticAngle():
             self.parangs = np.rad2deg(self.observer.parallactic_angle(self.source_times, self.source_pos))
 
         else:
-            self.ha = np.asarray([self.hour_angle(self.source_pos.ra.rad, tt,  observatory=self.telescope_name) for tt in self.source_times.mjd * 24 * 3600.])
-            self.ha *= u.rad
+            self.ha = np.asarray([self.hour_angle(self.source_pos.ra.hour, tt.mjd*24*3600.,  observatory=self.telescope_name) for tt in self.source_times])
+            #self.ha *= u.rad
 
             # Store only the parangs, skip the slope
-            self.parangs = np.asarray([self.parallactic_angle(hh, self.telescope_pos[1]*u.deg, self.source_pos.dec.rad)[0] for hh in self.ha])
-            self.parangs *= u.rad
+            self.parangs = np.asarray([self.parallactic_angle(hh, self.telescope_pos[1], self.source_pos.dec.rad)[0] for hh in self.ha])
+            self.parangs = np.rad2deg(self.parangs)
 
         self.parang_start = self.parangs[0]
         self.parang_mid = self.parangs[self.parangs.size//2]
@@ -179,7 +181,6 @@ class ParallacticAngle():
         Thus:
         tan(eta) = cos(lat)*sin(HA) / (sin(lat)*cos(dec)-cos(lat)*sin(dec)*cos(HA))
         """
-        #z = np.zeros((1), dtype={'names': ['parangle', 'slope'], 'formats': ['f8', 'i4']})
 
         eta = np.arctan2(
                 np.cos(lat)*np.sin(HA),
@@ -190,16 +191,12 @@ class ParallacticAngle():
 
         if(eta < 0):
             slope = -1.0
-            eta += 2.0*np.pi*u.rad
+            eta += 2.0*np.pi
 
-        #z['parangle'] = eta
-        #z['slope'] = slope
-
-        # Cannot do np.asarray() if eta is returned with units, so return without units.
-        return eta.value, slope
+        return eta, slope
 
 
-    def hour_angle(self, ra, time, timeunit='s', observatory='VLA'):
+    def hour_angle(self, ra, time, observatory='VLA'):
         """
         Function to compute the hourangle of a source at a given time, given an
         observatory name. This function uses the measures tool to compute the
@@ -208,7 +205,6 @@ class ParallacticAngle():
         Inputs:
         ra              Right Ascension of object in radians, float
         time            Timestamp of observation in MJD-seconds, float
-        timeunit        Unit of the sbove timestamp, str
         observatory     Name of the observatory, str
 
         Outputs:
@@ -218,7 +214,7 @@ class ParallacticAngle():
         if hasattr(time, '__len__') and (not isinstance(time, str)):
             raise ValueError("Input time should be a single float, not an array/list.")
 
-        # CHeck if observatory is valid
+        # Check if observatory is valid
         obslist = me.obslist()
 
         if observatory.lower() not in [oo.lower() for oo in obslist]:
@@ -229,11 +225,11 @@ class ParallacticAngle():
 
         me.doframe(me.observatory(observatory))
 
-        tm = me.epoch('UTC', str(time) + f'{timeunit}')
+        tm = me.epoch('UTC', f'{str(time)}s')
         last = me.measure(tm, 'LAST')['m0']['value']
-        last -= np.floor(last)
-        lst = qa.convert(str(last)+'d', 'rad')
-
-        ha = lst['value'] - ra
+        last -= np.floor(last)  # days
+        last *= 24.0  # hours
+        ha = last - ra  # hours
+        ha = ha * 2*np.pi/24.  # rad
 
         return ha
