@@ -55,19 +55,22 @@ def main(imagename, csv, padding, dish_dia, islinear, stokesi, parallel, parang)
     if len(parang) > 2:
         raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
-    imsize, imfreq, is_cube = parse_image(imagename)
-    zdf, zfreq, nstokes = get_zcoeffs(csv, imfreq)
+    imsize, imfreq, is_stokes_cube = parse_image(imagename)
+    zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
-    logger.info(f"Image is at {imfreq:.2f} MHz. Model PB will be generated at {zfreq:.2f} MHz")
+    logger.info(f"Image is at {imfreq[0]:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
+    logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
 
     zb = zernikeBeam()
-    zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
-                        islinear=islinear, stokesi=stokesi, parang=parang, parallel=parallel)
 
-    jones_beams = zb.gen_jones_beams()
-    stokes_beams = zb.jones_to_mueller(jones_beams)
+    for zdf in zdflist:
+        zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
+                            islinear=islinear, stokesi=stokesi, parang=parang, parallel=parallel)
 
-    zb.regrid_to_template(stokes_beams, imagename)
+        jones_beams = zb.gen_jones_beams()
+        stokes_beams = zb.jones_to_mueller(jones_beams)
+
+        zb.regrid_to_template(stokes_beams, imagename)
 
     #if parang is not None:
         #stokes_beams = zb.rotate_beam(stokes_beams, parang)
