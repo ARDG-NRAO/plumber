@@ -11,8 +11,8 @@ setup (
     include_dirs=[numpy.get_include()],
     entry_points="""
     [console_scripts]
-    plumber=plumber.plumber:main
-    parang_finder=plumber.parang_finder:main
+    plumber=plumber.scripts.plumber:main
+    parang_finder=plumber.scripts.parang_finder:main
     """
 )
 
