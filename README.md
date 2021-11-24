@@ -16,13 +16,13 @@ As of 2021 this supports VLA S Band and MeerKAT L band observations, although su
 
 
 ## Installation
-First ensure you have `conda` available from [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://docs.anaconda.com/anaconda/index.html). 
+First ensure you have `conda` available from [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://docs.anaconda.com/anaconda/index.html). [mamba](https://github.com/mamba-org/mamba) is also recommended to speed up the installation process. 
 
 Clone the repo, and then run 
 
 ```conda env create```
 
-This will create a conda virtual environment called `conda`. To use `plumber` simply run
+This will create a conda virtual environment called `plumber`. To use `plumber` simply run
 
 ```conda activate plumber```
 
