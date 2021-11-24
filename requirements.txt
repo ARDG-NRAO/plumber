@@ -1,10 +1,6 @@
-numpy>=1.17
-astropy
-click
-matplotlib>=2.0.0
-pandas
-scipy
-casatools>=6.2
 casatasks>=6.2
-astroplan>=0.8
-pytest
+casatools>=6.2
+spectral_cube
+setuptools
+
+-e .
