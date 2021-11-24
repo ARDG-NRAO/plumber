@@ -16,12 +16,23 @@ As of 2021 this supports VLA S Band and MeerKAT L band observations, although su
 
 
 ## Installation
+First ensure you have `conda` available from [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://docs.anaconda.com/anaconda/index.html). 
+
 Clone the repo, and then run 
 
-```pip install setup.py```
+```conda env create```
 
-Please look at `requirements.txt` if `pip` is unable to automatically resolve all the dependencies. 
+This will create a conda virtual environment called `conda`. To use `plumber` simply run
 
+```conda activate plumber```
+
+If you encounter a casa-data error like:
+
+```ImportError: measures data is not available, visit http://go.nrao.edu/casadata-info for more information```
+
+You can fix this by updating your casa-data:
+
+```python -m casatools --update-user-data```
 
 ## Usage:
 
