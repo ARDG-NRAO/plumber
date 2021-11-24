@@ -1,0 +1,17 @@
+name: plumber
+channels:
+- conda-forge
+- pkgw-forge
+dependencies:
+- python=3.6
+- astroplan
+- astropy
+- click
+- matplotlib
+- numpy
+- pandas
+- scipy
+- pip
+- casa-data
+- pip:
+  - -rrequirements.txt
