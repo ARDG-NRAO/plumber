@@ -128,9 +128,9 @@ class zernikeBeam():
             self.islinear = True
         elif "alma" in self.telescope.lower():
             self.islinear = True
-        elif "gmrt" in self.telescope.lower() and self.freq < 1e3:
+        elif "gmrt" in self.telescope.lower() and self.freq < 9e2:
             self.islinear = False
-        elif "gmrt" in self.telescope.lower() and self.freq >= 1e3:
+        elif "gmrt" in self.telescope.lower() and self.freq >= 9e2:
             self.islinear = True
         else:
             raise ValueError("Unable to determine feed bsis, unknown telescope. "
@@ -184,26 +184,26 @@ class zernikeBeam():
         template_csys = ia.coordsys().torecord()
         ia.close()
 
+        #try:
+        #    unit = template_csys['spectral2']['unit']
+        #except KeyError:
+        #    unit = template_csys['spectral1']['unit']
+
+        #if unit.lower() == 'hz':
+        #    fac = 1
+        #elif unit.lower() == 'mhz':
+        #    fac = 1e-6
+        #elif unit.lower() == 'ghz':
+        #    fac = 1e-9
+        #else:
+        #    raise ValueError("Unknown unit in image.")
+
         try:
-            unit = template_csys['spectral2']['unit']
+            freq = template_csys['spectral2']['wcs']['crval']
         except KeyError:
-            unit = template_csys['spectral1']['unit']
+            freq = template_csys['spectral1']['wcs']['crval']
 
-        if unit.lower() == 'hz':
-            fac = 1
-        elif unit.lower() == 'mhz':
-            fac = 1e-6
-        elif unit.lower() == 'ghz':
-            fac = 1e-9
-        else:
-            raise ValueError("Unknown unit in image.")
-
-        try:
-            freq = template_csys['spectral2']['restfreq']
-        except KeyError:
-            freq = template_csys['spectral1']['restfreq']
-
-        lambd = 299792458/(freq*fac)
+        lambd = 299792458/freq
 
         outname = 'fft.im'
         wipe_file(outname)
@@ -224,7 +224,7 @@ class zernikeBeam():
                         "applying frequency dependent scaling.")
             eta = 1.
 
-        # Number of pixels across a 25m array
+        # Number of pixels across the aperture
         npix = self.dish_dia*eta/lambd
         npix = int(np.ceil(npix/cdelt))
 
@@ -425,6 +425,9 @@ class zernikeBeam():
             zaperture = zreal + 1j*zimag
             zaperture[maskidx] = 0
 
+            # Python has the array flipped relative to what CASA wants
+            zaperture = np.fliplr(zaperture)
+
             ia.fromarray(jonesnames[idx], zaperture[:,:,None,None], linear=True)
             ia.close()
 
@@ -482,12 +485,21 @@ class zernikeBeam():
         [wipe_file(ss) for ss in stokesnames]
 
         if self.islinear:
-            Sdag_M_S = [
-                'real( CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3 )',
-                'real( -CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3 )',
-                'real( CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2 )',
-                'real( 1i*(CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2) )'
-            ]
+            # This is probably true for ASKAP as well
+            if 'meerkat' in self.telescope.lower():
+                Sdag_M_S = [
+                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
+                    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
+                ]
+            else: # This works for ALMA
+                Sdag_M_S = [
+                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
+                    'real(CONJ(IM0)*IM0 - CONJ(IM1)*IM1 + CONJ(IM2)*IM2 - CONJ(IM3)*IM3)',
+                    'real(CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)',
+                    'real(1i*(CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))'
+                ]
         else:
             Sdag_M_S = [
                 'real( CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3 )/2.',
