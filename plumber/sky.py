@@ -244,3 +244,31 @@ class ParallacticAngle():
         ha = ha * 2*np.pi/24.  # rad
 
         return ha
+
+
+    def parang_weights(self, bin_width:int = 5) -> np.ndarray:
+        """
+
+        Bin the calculated parallactic angles and calculate the weight per
+        parang bin.
+
+        Inputs:
+        bin_width   Width of each bin in degrees, int
+
+        Returns:
+        hist        Normalized histogram, i.e., weights per bin, array of floats
+        bins        List of bin centres in degrees, array of floats
+        """
+
+        if len(self.parangs) == 0:
+            raise ValueError("No valid parallactic angles found. Please run "
+                                "ParallacticAngle.fill_ms_attributes() first.")
+
+        parang_range = [np.amin(self.parangs), np.amax(self.parangs)]
+        parang_bins = np.arange(parang_range[0], parang_range[1], bin_width)
+
+        hist, bins = np.histogram(self.parangs, bins=parang_bins, density=True)
+
+        bins = (bins[1:] + bins[:-1])/2.
+
+        return hist, bins
