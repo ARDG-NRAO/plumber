@@ -15,6 +15,8 @@ from astropy.coordinates import SkyCoord
 from astroplan import Observer
 from astroplan.constraints import observability_table
 
+from typing import Union
+
 from casatools import msmetadata, measures, quanta
 msmd = msmetadata()
 qa = quanta()
@@ -39,7 +41,7 @@ logger = logging.getLogger()
 
 
 class ParallacticAngle():
-    def __init__(self, ms=None, use_astropy=False) -> None:
+    def __init__(self, ms: str=None, use_astropy: bool=False) -> None:
         super().__init__()
 
         self.parangs = []
@@ -62,7 +64,7 @@ class ParallacticAngle():
             self.fill_ms_attributes(ms)
 
 
-    def fill_ms_attributes(self, measurement_set, field=None) -> None:
+    def fill_ms_attributes(self, measurement_set: str, field: str=None) -> None:
         msmd.open(measurement_set)
         self.telescope_name = msmd.observatorynames()
 
@@ -161,7 +163,7 @@ class ParallacticAngle():
         msmd.close()
 
 
-    def parallactic_angle(self, HA, lat, dec):
+    def parallactic_angle(self, HA: float, lat: float, dec: float) -> Union[float,float]:
         """
         Inputs:
 
@@ -205,7 +207,7 @@ class ParallacticAngle():
         return eta, slope
 
 
-    def hour_angle(self, ra, time, observatory='VLA'):
+    def hour_angle(self, ra: float, time: float, observatory:str ='VLA') -> float:
         """
         Function to compute the hourangle of a source at a given time, given an
         observatory name. This function uses the measures tool to compute the
