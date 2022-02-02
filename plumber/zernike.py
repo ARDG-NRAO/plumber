@@ -368,29 +368,31 @@ class zernikeBeam():
         else:
             paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
-        if len(self.parang) > 0:
-            if len(self.parang) == 1:
-                logger.info(f"Rotating to parallactic angle {self.parang}")
-                parang = self.parang[0]
-                paddat_r = rotate(paddat.real, angle=parang, reshape=False)
-                paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
-            elif len(self.parang) == 2:
-                logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
-                paddat_r= 0
-                paddat_i= 0
-                npa = 0
-                # Average over PA
-                for pp in np.linspace(self.parang[0], self.parang[1], 5):
-                    paddat_r += rotate(paddat.real, angle=pp, reshape=False)
-                    paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
-                    npa += 1
-
-                paddat_r /= npa
-                paddat_i /= npa
-            else:
-                raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
-
+        if self.parang != 0:
+            logger.info(f"Rotating to parallactic angle {self.parang}")
+            parang = self.parang[0]
+            paddat_r = rotate(paddat.real, angle=parang, reshape=False)
+            paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
             paddat = paddat_r + 1j*paddat_i
+
+        #if len(self.parang) > 0:
+        #    if len(self.parang) == 1:
+        #    elif len(self.parang) == 2:
+        #        logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
+        #        paddat_r= 0
+        #        paddat_i= 0
+        #        npa = 0
+        #        # Average over PA
+        #        for pp in np.linspace(self.parang[0], self.parang[1], 5):
+        #            paddat_r += rotate(paddat.real, angle=pp, reshape=False)
+        #            paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
+        #            npa += 1
+
+        #        paddat_r /= npa
+        #        paddat_i /= npa
+        #    else:
+        #        raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
+
 
         return paddat
 
@@ -460,8 +462,8 @@ class zernikeBeam():
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
-        [wipe_file(jj) for jj in jonesnames]
-        [wipe_file(jj) for jj in padjonesnames]
+        #[wipe_file(jj) for jj in jonesnames]
+        #[wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
 
@@ -634,6 +636,7 @@ class zernikeBeam():
 
         shutil.move(tmpname, imname)
 
+
     def rotate_beam(self, stokes_beams, parang):
         """
         Rotate the beam by parang degrees
@@ -647,7 +650,7 @@ class zernikeBeam():
         """
 
         if self.parallel and not self.do_stokesi_only:
-            _do_rotate_partial = partian(self._do_rotate, parang=parang)
+            _do_rotate_partial = partial(self._do_rotate, parang=parang)
             pool = multiprocessing.Pool(4)
             pool.map(_do_rotate_partial, stokes_beams)
         else:

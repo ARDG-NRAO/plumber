@@ -28,21 +28,24 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.argument('CSV', type=click.File())
 @click.option('-a', '--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
 @click.option('-d', '--dish_dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
-@click.option('-l', '--islinear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
+@click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
+@click.option('-c', '--circular', is_flag=True, help='Specifies if the telescope has circular feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-I', '--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
 @click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
-@click.option('-p', '--parang', type=float, multiple=True, help='Beginning (and optionally end) parallactic angle for the PB. Pass --parang twice to specify beg and end.', show_default=True)
-def main(imagename, csv, padding, dish_dia, islinear, stokesi, parallel, parang):
+@click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
+@click.option('--parang-file', type=click.File(), help='Pass a file containing a list of parallactic angles and weights')
+def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
     corresponding output cube of PBs will be generated, for each of the
     Stokes-I, -Q, -U and -V beams.
 
-    To pass in a beginning and end parallactic angle, pass in --parang twice,
-    like
-
-    plumber <image> <CSV> --parang 20 --parang 110
+    Specifying a --parang-file turns on parallactic angle averaging. The file
+    should contain two columns - the parallactic angle and the weight. This list
+    will be used to generate a weighted average beam over the listed parallactic
+    angles. For a simple arithmetic mean over parallactic angle, setting all the
+    weights to one is sufficient.
 
     The CSV file must be of the format
 
@@ -51,9 +54,13 @@ def main(imagename, csv, padding, dish_dia, islinear, stokesi, parallel, parang)
     The eta column in the CSV is optional.
     """
 
-    parang = sorted(parang)
-    if len(parang) > 2:
-        raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
+    islinear = None
+    if linear is True:
+        islinear = True
+
+    #parang = sorted(parang)
+    #if len(parang) > 2:
+    #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
     zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
@@ -71,6 +78,9 @@ def main(imagename, csv, padding, dish_dia, islinear, stokesi, parallel, parang)
         stokes_beams = zb.jones_to_mueller(jones_beams)
 
         zb.regrid_to_template(stokes_beams, imagename)
+
+    if parang_file is not None:
+        pass
 
     #if parang is not None:
         #stokes_beams = zb.rotate_beam(stokes_beams, parang)
