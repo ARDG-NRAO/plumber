@@ -5,6 +5,8 @@ Module to hold all the function that deal with the Zernike generation or CSV
 parsing
 """
 
+from __future__ import annotations
+
 import shutil
 import pandas as pd
 import numpy as np
@@ -13,6 +15,7 @@ from scipy.ndimage import rotate
 import astropy.units as u
 
 from copy import deepcopy
+from typing import Union
 
 import multiprocessing
 from functools import partial, wraps
@@ -27,7 +30,7 @@ from casatools import image
 ia = image()
 
 
-def get_zcoeffs(csv, imfreq):
+def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
     """
     Given the input frequency of the image, returns the Pandas dataframe with
     the coefficients corresponding to the input frequency. The frequencies in
@@ -140,7 +143,7 @@ class zernikeBeam():
 
 
 
-    def get_dish_diameter(self, templateim):
+    def get_dish_diameter(self, templateim: str) -> None:
         """
         Get the dish diameter for different instruments.
 
@@ -175,29 +178,22 @@ class zernikeBeam():
                              'class with the dish_diameter value in metres.')
 
 
-    def get_npix_aperture(self, templateim):
+    def get_npix_aperture(self, templateim: str) -> Union[int, float]:
         """
         Calculate the number of pixels across the aperture from the template
         image.
+
+        Inputs:
+        templateim      Name of the input template image, str
+
+        Returns:
+        npix            The number of pixels across the aperture, int
+        cdelt           The pixel delta in lambda, float
         """
 
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
         ia.close()
-
-        #try:
-        #    unit = template_csys['spectral2']['unit']
-        #except KeyError:
-        #    unit = template_csys['spectral1']['unit']
-
-        #if unit.lower() == 'hz':
-        #    fac = 1
-        #elif unit.lower() == 'mhz':
-        #    fac = 1e-6
-        #elif unit.lower() == 'ghz':
-        #    fac = 1e-9
-        #else:
-        #    raise ValueError("Unknown unit in image.")
 
         try:
             freq = template_csys['spectral2']['wcs']['crval']
@@ -243,9 +239,17 @@ class zernikeBeam():
 
 
 
-    def powl(self, base, exp):
+    def powl(self, base: float, exp: float) -> float:
         """
+        Raise base to an exponent quickly.
         Algorithm taken from https://stackoverflow.com/questions/2198138/calculating-powers-e-g-211-quickly
+
+        Inputs:
+        base        Input base, float
+        exp         Exponent to raise to, float
+
+        Returns:
+        base^exp    Base raised to the exponent, float
         """
         if exp == 0:
             return 1
@@ -257,10 +261,18 @@ class zernikeBeam():
             return self.powl(base * base, exp // 2)
 
 
-    def gen_zernike_surface(self, coeffs, x, y):
+    def gen_zernike_surface(self, coeffs: np.ndarray, x: np.ndarray, y:np.ndarray) -> np.ndarray:
 
         '''
         Use polynomial approximations to generate Zernike surface
+
+        Inputs:
+        coeffs      List of coefficients, np.ndarray
+        x           2D array of X coordinates, from np.meshgrid
+        y           2D array of Y coordinates, from np.meshgrid
+
+        Returns:
+        ZW          The Zernike surface, np.ndarray
         '''
 
         #Setting coefficients array
@@ -345,9 +357,15 @@ class zernikeBeam():
         return ZW
 
 
-    def pad_image(self, inpdat):
+    def pad_image(self, inpdat: np.ndarray) -> np.ndarray:
         """
         Pad the input image by self.padfac and return the numpy array
+
+        Inputs:
+        inpdat      Input image data, 2D array
+
+        Returns:
+        paddat      Padded image data, 2D array
         """
 
         shape = inpdat.shape
@@ -388,29 +406,10 @@ class zernikeBeam():
 
             paddat = paddat_wavg
 
-        #if len(self.parang) > 0:
-        #    if len(self.parang) == 1:
-        #    elif len(self.parang) == 2:
-        #        logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
-        #        paddat_r= 0
-        #        paddat_i= 0
-        #        npa = 0
-        #        # Average over PA
-        #        for pp in np.linspace(self.parang[0], self.parang[1], 5):
-        #            paddat_r += rotate(paddat.real, angle=pp, reshape=False)
-        #            paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
-        #            npa += 1
-
-        #        paddat_r /= npa
-        #        paddat_i /= npa
-        #    else:
-        #        raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
-
-
         return paddat
 
 
-    def gen_jones_beams(self):
+    def gen_jones_beams(self) -> list[str]:
         """
         Generate the Jones beams from the aperture coefficients.
 
@@ -481,7 +480,7 @@ class zernikeBeam():
         return beamnames
 
 
-    def jones_to_mueller(self, beamnames):
+    def jones_to_mueller(self, beamnames: list[str]) -> list[str]:
         """
         Convert the input Jones beams to Mueller beams
 
@@ -554,14 +553,17 @@ class zernikeBeam():
 
         return stokesnames
 
-    def _do_regrid(self, inname, templatecoord, outcsys):
+
+    def _do_regrid(self, inname: str, templatecoord: dict, outcsys: dict) -> None:
         """
-        Actually perform the regird. Abstracted into it's own function for
+        Actually perform the regrid. Abstracted into it's own function for
         multi-processing purposes.
 
         Inputs:
-        templatecoord       Template coordinate system, dict returned from imregrid()
         inname              Name of the input image, string
+        templatecoord       Template coordinate system, dict returned from imregrid()
+        outcsys             The co-ordinate system to apply to the input image prior to regrid,
+                            dict returned from imregrid()
 
         Returns:
         None
@@ -580,7 +582,7 @@ class zernikeBeam():
         shutil.move(outname, inname)
 
 
-    def regrid_to_template(self, stokes_beams, templateim):
+    def regrid_to_template(self, stokes_beams: list[str], templateim: str) -> None:
         """
         Match co-ordinates between the template image and the PBs, and regrid
         the PBs to lie on the same co-ordinate grid.
@@ -631,7 +633,7 @@ class zernikeBeam():
 
 
 
-    def rotate_image(self, indat, parang):
+    def rotate_image(self, indat: np.ndarray, parang: float) -> np.ndarray:
         """
         Rotate the input data by parang degrees in place.
 
@@ -652,47 +654,3 @@ class zernikeBeam():
             rotdat = rotate(indat, angle=parang, reshape=False)
 
         return rotdat
-
-
-    #def rotate_image(self, indat, parang):
-    #    """
-    #    Rotate the input data by parang degrees in place.
-
-    #    Inputs:
-    #    indat           Input image data, 2D array
-    #    parang          Parallactic angle in deg, float
-
-    #    Returns:
-    #    rotdat          Rotated image, 2D array
-    #    """
-
-    #    tmpname = 'tmp_' + imname
-    #    ia.open(imname)
-    #    ia.rotate(outfile=tmpname, pa=f'{parang}deg')
-    #    ia.close()
-
-    #    shutil.move(tmpname, imname)
-
-
-    #def rotate_beam(self, stokes_beams, parang):
-    #    """
-    #    Rotate the beam by parang degrees
-
-    #    Inputs:
-    #    stokes_beams    Names of the input beams, array of strings
-    #    parang          Parallactic angle in deg, float
-
-    #    Returns:
-    #    stokes_beams    Rotated beams (in place), array of strings
-    #    """
-
-    #    if self.parallel and not self.do_stokesi_only:
-    #        _do_rotate_partial = partial(self._do_rotate, parang=parang)
-    #        pool = multiprocessing.Pool(4)
-    #        pool.map(_do_rotate_partial, stokes_beams)
-    #    else:
-    #        for iss, ss in enumerate(stokes_beams):
-    #            if self.do_stokesi_only and iss > 0:
-    #                    break
-
-    #            self._do_rotate(ss, parang)
