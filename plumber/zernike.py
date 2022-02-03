@@ -79,7 +79,7 @@ class zernikeBeam():
         self.parallel = False
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parallel=False):
+    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -107,6 +107,7 @@ class zernikeBeam():
         self.padfac = int(padfac)
         self.parallel = parallel
         self.parang = parang
+        self.parang_file = parang_file
 
         # In MHz
         self.freq = df['freq'].unique()[0]
@@ -370,10 +371,22 @@ class zernikeBeam():
 
         if self.parang != 0:
             logger.info(f"Rotating to parallactic angle {self.parang}")
-            parang = self.parang[0]
-            paddat_r = rotate(paddat.real, angle=parang, reshape=False)
-            paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
-            paddat = paddat_r + 1j*paddat_i
+            paddat = self.rotate_image(paddat, self.parang)
+
+        if self.parang_file is not None:
+            logger.info(f"Calculating weighted parang average from {self.parang_file}")
+
+            pfile_dat = np.loadtxt(self.parang_file)
+            parangs = pfile_dat.T[0]
+            weights = pfile_dat.T[1]
+
+            paddat_wavg = np.zeros_like(paddat)
+            for pp, ww in zip(parangs, weights):
+                rotdat = self.rotate_image(paddat, pp)
+                paddat_wavg += rotdat * ww
+            paddat_wavg /= np.sum(ww)
+
+            paddat = paddat_wavg
 
         #if len(self.parang) > 0:
         #    if len(self.parang) == 1:
@@ -462,8 +475,8 @@ class zernikeBeam():
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
-        #[wipe_file(jj) for jj in jonesnames]
-        #[wipe_file(jj) for jj in padjonesnames]
+        [wipe_file(jj) for jj in jonesnames]
+        [wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
 
@@ -532,7 +545,7 @@ class zernikeBeam():
             dat /= maxv
             ia.close()
 
-            # ia.fft() put it into lienar coords, dump it back into SkyCoord
+            # ia.fft() put it into linear coords, dump it back into SkyCoord
             shutil.rmtree(ss)
             ia.fromarray(ss, dat)
             ia.close()
@@ -617,45 +630,69 @@ class zernikeBeam():
                 self._do_regrid(ss, templatecoord, outcsys)
 
 
-    def _do_rotate(self, imname, parang):
+
+    def rotate_image(self, indat, parang):
         """
-        Rotate the input image by parang degrees in place.
+        Rotate the input data by parang degrees in place.
 
         Inputs:
-        imname          Input image name, string
+        indat           Input image data, 2D array
         parang          Parallactic angle in deg, float
 
         Returns:
-        None
+        rotdat          Rotated image, 2D array
         """
 
-        tmpname = 'tmp_' + imname
-        ia.open(imname)
-        ia.rotate(outfile=tmpname, pa=f'{parang}deg')
-        ia.close()
+        if indat.dtype == complex:
+            indat_r = rotate(indat.real, angle=parang, reshape=False)
+            indat_i = rotate(indat.imag, angle=parang, reshape=False)
 
-        shutil.move(tmpname, imname)
-
-
-    def rotate_beam(self, stokes_beams, parang):
-        """
-        Rotate the beam by parang degrees
-
-        Inputs:
-        stokes_beams    Names of the input beams, array of strings
-        parang          Parallactic angle in deg, float
-
-        Returns:
-        stokes_beams    Rotated beams (in place), array of strings
-        """
-
-        if self.parallel and not self.do_stokesi_only:
-            _do_rotate_partial = partial(self._do_rotate, parang=parang)
-            pool = multiprocessing.Pool(4)
-            pool.map(_do_rotate_partial, stokes_beams)
+            rotdat = indat_r + 1j*indat_i
         else:
-            for iss, ss in enumerate(stokes_beams):
-                if self.do_stokesi_only and iss > 0:
-                        break
+            rotdat = rotate(indat, angle=parang, reshape=False)
 
-                self._do_rotate(ss, parang)
+        return rotdat
+
+
+    #def rotate_image(self, indat, parang):
+    #    """
+    #    Rotate the input data by parang degrees in place.
+
+    #    Inputs:
+    #    indat           Input image data, 2D array
+    #    parang          Parallactic angle in deg, float
+
+    #    Returns:
+    #    rotdat          Rotated image, 2D array
+    #    """
+
+    #    tmpname = 'tmp_' + imname
+    #    ia.open(imname)
+    #    ia.rotate(outfile=tmpname, pa=f'{parang}deg')
+    #    ia.close()
+
+    #    shutil.move(tmpname, imname)
+
+
+    #def rotate_beam(self, stokes_beams, parang):
+    #    """
+    #    Rotate the beam by parang degrees
+
+    #    Inputs:
+    #    stokes_beams    Names of the input beams, array of strings
+    #    parang          Parallactic angle in deg, float
+
+    #    Returns:
+    #    stokes_beams    Rotated beams (in place), array of strings
+    #    """
+
+    #    if self.parallel and not self.do_stokesi_only:
+    #        _do_rotate_partial = partial(self._do_rotate, parang=parang)
+    #        pool = multiprocessing.Pool(4)
+    #        pool.map(_do_rotate_partial, stokes_beams)
+    #    else:
+    #        for iss, ss in enumerate(stokes_beams):
+    #            if self.do_stokesi_only and iss > 0:
+    #                    break
+
+    #            self._do_rotate(ss, parang)
