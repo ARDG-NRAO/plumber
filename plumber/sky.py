@@ -15,6 +15,8 @@ from astropy.coordinates import SkyCoord
 from astroplan import Observer
 from astroplan.constraints import observability_table
 
+from typing import Union
+
 from casatools import msmetadata, measures, quanta
 msmd = msmetadata()
 qa = quanta()
@@ -39,7 +41,7 @@ logger = logging.getLogger()
 
 
 class ParallacticAngle():
-    def __init__(self, ms=None, use_astropy=False) -> None:
+    def __init__(self, ms: str=None, use_astropy: bool=False) -> None:
         super().__init__()
 
         self.parangs = []
@@ -62,7 +64,7 @@ class ParallacticAngle():
             self.fill_ms_attributes(ms)
 
 
-    def fill_ms_attributes(self, measurement_set, field=None) -> None:
+    def fill_ms_attributes(self, measurement_set: str, field: str=None) -> None:
         msmd.open(measurement_set)
         self.telescope_name = msmd.observatorynames()
 
@@ -161,7 +163,7 @@ class ParallacticAngle():
         msmd.close()
 
 
-    def parallactic_angle(self, HA, lat, dec):
+    def parallactic_angle(self, HA: float, lat: float, dec: float) -> Union[float,float]:
         """
         Inputs:
 
@@ -205,7 +207,7 @@ class ParallacticAngle():
         return eta, slope
 
 
-    def hour_angle(self, ra, time, observatory='VLA'):
+    def hour_angle(self, ra: float, time: float, observatory:str ='VLA') -> float:
         """
         Function to compute the hourangle of a source at a given time, given an
         observatory name. This function uses the measures tool to compute the
@@ -242,3 +244,31 @@ class ParallacticAngle():
         ha = ha * 2*np.pi/24.  # rad
 
         return ha
+
+
+    def parang_weights(self, bin_width:int = 5) -> np.ndarray:
+        """
+
+        Bin the calculated parallactic angles and calculate the weight per
+        parang bin.
+
+        Inputs:
+        bin_width   Width of each bin in degrees, int
+
+        Returns:
+        hist        Normalized histogram, i.e., weights per bin, array of floats
+        bins        List of bin centres in degrees, array of floats
+        """
+
+        if len(self.parangs) == 0:
+            raise ValueError("No valid parallactic angles found. Please run "
+                                "ParallacticAngle.fill_ms_attributes() first.")
+
+        parang_range = [np.amin(self.parangs), np.amax(self.parangs)]
+        parang_bins = np.arange(parang_range[0], parang_range[1], bin_width)
+
+        hist, bins = np.histogram(self.parangs, bins=parang_bins, density=True)
+
+        bins = (bins[1:] + bins[:-1])/2.
+
+        return hist, bins

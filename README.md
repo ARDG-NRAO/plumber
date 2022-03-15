@@ -20,7 +20,7 @@ First ensure you have `conda` available from [miniconda](https://docs.conda.io/e
 
 Clone the repo, and then run 
 
-```conda env create```
+```conda env create plumber```
 
 This will create a conda virtual environment called `plumber`. To use `plumber` simply run
 
@@ -94,11 +94,15 @@ Usage: parang_finder [OPTIONS] MS
   Part of the plumber package to generate full Stokes beam models.
 
 Options:
-  --field TEXT  Name of field to consider, must match exactly the name in the
-                MS. If this is not specified, will use the first field with
-                the TARGET intent.
-
-  -h, --help    Show this message and exit.
+  --field TEXT            Name of field to consider, must match exactly the
+                          name in the MS. If this is not specified, will use
+                          the first field with the TARGET intent.
+  --use-astropy           Use astropy convention rather than CASA convention
+                          to   calculate the parallactic angle
+  -c, --calcweights       Print a list of parallactic angle and associated
+                          weights
+  -w, --binwidth INTEGER  Bin width in degrees
+  -h, --help              Show this message and exit.
 ```
 
 ### Location of coefficients

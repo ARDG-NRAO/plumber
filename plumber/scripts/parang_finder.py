@@ -40,7 +40,11 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.option('--use-astropy', is_flag=True,
               help='Use astropy convention rather than CASA convention to '
               '  calculate the parallactic angle')
-def main(ms, field, use_astropy):
+@click.option('--calcweights', '-c', is_flag=True,
+              help='Print a list of parallactic angle and associated weights')
+@click.option('--binwidth', '-w', type=int, default=5,
+              help='Bin width in degrees')
+def main(ms, field, use_astropy, calcweights, binwidth):
     """
     Helper script to determine the range of parallactic angles in an input MS.
 
@@ -48,6 +52,16 @@ def main(ms, field, use_astropy):
     """
 
     parang = ParallacticAngle(ms=ms, use_astropy=use_astropy)
+
+    if calcweights:
+        weights, bins = parang.parang_weights(bin_width=binwidth)
+        # Create fractional weights - this doesn't change anything in the averaging
+        weights = weights/np.sum(weights)
+
+        with open('parang_weights.txt', 'w') as fptr:
+            fptr.write("#parang  weight\n")
+            for ww, bb in zip(weights, bins):
+                fptr.write("%.2f   % .2f\n" % (bb, ww))
 
     logger.info(f"First parallactic angle is : {parang.parang_start:.2f}")
     logger.info(f"Middle parallactic angle is : {parang.parang_mid:.2f}")
