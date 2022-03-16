@@ -82,10 +82,10 @@ class ParallacticAngle():
                     self.telescope_pos['m2']['value']
         ]
 
-        logger.info(f"Telescope {self.telescope_name[0]} is at co-ordinates "
+        logger.info(f"Telescope {self.telescope_name} is at co-ordinates "
                 f"{np.rad2deg(self.telescope_pos[0]):.2f} deg, "
                 f"{np.rad2deg(self.telescope_pos[1]):.2f} deg, "
-                f"{np.rad2deg(self.telescope_pos[2]):.2f} m")
+                f"{self.telescope_pos[2]:.2f} m")
 
         self.field_names = msmd.fieldnames()
         self.target_fields = msmd.fieldsforintent('TARGET', asnames=True)
