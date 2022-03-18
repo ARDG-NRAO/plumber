@@ -70,7 +70,7 @@ class ParallacticAngle():
 
         if len(self.telescope_name) > 1:
             logger.warning(f"Multiple observatory names found : {','.join(self.telescope_name)}. "
-                           f"Using the first one, {self.telesocpe_name[0]}")
+                           f"Using the first one, {self.telescope_name[0]}")
 
         self.telescope_name = self.telescope_name[0]
         self.telescope_pos = msmd.observatoryposition()
