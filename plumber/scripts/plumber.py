@@ -66,7 +66,7 @@ def main(imagename, csv, padding, circular, dish_dia, frequency, stokesi, linear
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
 
     if frequency is not None:
-        imfreq = frequency*1e6
+        imfreq = [frequency*1e6,]
 
     zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
