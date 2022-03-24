@@ -35,7 +35,7 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
-def main(imagename, csv, padding, circular, dish_dia, frequency, stokesi, linear, parang, parang, parang_file):
+def main(imagename, csv, padding, circular, dish_dia, frequency, stokesi, linear, parang, parallel, parang_file):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
