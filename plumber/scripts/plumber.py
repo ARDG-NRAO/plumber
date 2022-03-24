@@ -3,6 +3,8 @@
 import click
 from plumber.image import parse_image
 from plumber.zernike import get_zcoeffs, zernikeBeam
+
+import astropy.units as u
 #from plumber.parang_finder import parallctic_angle
 
 import logging
@@ -66,12 +68,13 @@ def main(imagename, csv, padding, circular, dish_dia, frequency, stokesi, linear
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
 
     if frequency is not None:
-        imfreq = [frequency*1e6,]
-
-    zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
-
-    logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
-    logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
+        frequency = [frequency*u.MHz,]
+        zdflist, zfreqlist, nstokes = get_zcoeffs(csv, frequency)
+        logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Forcing model PB to be generated at {zfreqlist[0]:.2f} MHz")
+    else:
+        zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
+        logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
+    #logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
 
     zb = zernikeBeam()
 

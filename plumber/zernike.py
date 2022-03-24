@@ -30,7 +30,7 @@ from casatools import image
 ia = image()
 
 
-def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
+def get_zcoeffs(csv: str, imfreq: list) -> Union[pd.Dataframe, float, int]:
     """
     Given the input frequency of the image, returns the Pandas dataframe with
     the coefficients corresponding to the input frequency. The frequencies in
@@ -38,7 +38,7 @@ def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
 
     Inputs:
     csv         Input CSV filename, string
-    imfreq      Image frequency in MHz, float
+    imfreq      Image frequency in MHz, list of floats (astropy.units)
 
     Returns:
     zdf         Dataframe containing the subset of the CSV file which is closest
