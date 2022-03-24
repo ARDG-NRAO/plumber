@@ -27,14 +27,15 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.argument('imagename', type=click.Path(exists=True))
 @click.argument('CSV', type=click.File())
 @click.option('-a', '--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
-@click.option('-d', '--dish_dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
-@click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-c', '--circular', is_flag=True, help='Specifies if the telescope has circular feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
+@click.option('-d', '--dish_dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
+@click.option('-f', '--frequency', type=float, help='Force a frequency at which to generate the beam (in MHz). Plumber will choose the nearest available frequency from the CSV file.')
 @click.option('-I', '--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
-@click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
+@click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
+@click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file):
+def main(imagename, csv, padding, circular, dish_dia, frequency, stokesi, linear, parang, parang, parang_file):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -63,6 +64,10 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
+
+    if frequency is not None:
+        imfreq = frequency*1e6
+
     zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
     logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
