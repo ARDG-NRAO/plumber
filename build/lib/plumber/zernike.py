@@ -5,8 +5,6 @@ Module to hold all the function that deal with the Zernike generation or CSV
 parsing
 """
 
-from __future__ import annotations
-
 import shutil
 import pandas as pd
 import numpy as np
@@ -15,7 +13,6 @@ from scipy.ndimage import rotate
 import astropy.units as u
 
 from copy import deepcopy
-from typing import Union
 
 import multiprocessing
 from functools import partial, wraps
@@ -23,14 +20,14 @@ from functools import partial, wraps
 import logging
 logger = logging.getLogger(__name__)
 
-from plumber.misc import wipe_file, make_unique
+from plumber.misc import wipe_file
 
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
 
 
-def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
+def get_zcoeffs(csv, imfreq):
     """
     Given the input frequency of the image, returns the Pandas dataframe with
     the coefficients corresponding to the input frequency. The frequencies in
@@ -80,24 +77,9 @@ class zernikeBeam():
         self.dish_dia = None
         self.islinear = None
         self.parallel = False
-        self.telescope = None
-
-        # Everything with ft_ is in aperture domain
-        self.ft_cdelt = [None, None]
-        self.ft_cdelt_os  = [None, None]
-        self.ftcoords = None
-
-        self.ft_npix = 0
-        self.ft_npix_os = 0
-
-        self.lambd = 0
-
-        self.oversamp = 20
 
 
-
-
-    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False):
+    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parallel=False):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -114,51 +96,24 @@ class zernikeBeam():
         """
 
         self.df = df
-        self.telescope = self.get_telescope(templateim)
-        self.eta = 1.
-        self.xyratio = 1.
 
         self.dish_dia = dish_dia
-        self.get_dish_diameter()
+        self.get_dish_diameter(templateim)
         self.islinear = islinear
         self.get_feed_basis()
 
-        # Creates ftcoords and sets ft_cdelt and ft_cdelt_os
-        # Sets ft_npix and ft_npix_os
-        self.get_npix_aperture(templateim)
+        self.npix, self.cdelt_aperture = self.get_npix_aperture(templateim)
 
         self.padfac = int(padfac)
         self.parallel = parallel
         self.parang = parang
-        self.parang_file = parang_file
 
         # In MHz
         self.freq = df['freq'].unique()[0]
         self.do_stokesi_only = stokesi
 
 
-    def get_telescope(self, templateim: str) -> str:
-        """
-        Get the telescope name from the image header
-
-        Input:
-        templateim      Name of the input template image, string
-
-        Returns:
-        telescope       Name of the input telescope
-        """
-
-        ia.open(templateim)
-        csys = ia.coordsys().torecord()
-        ia.close()
-
-        telescope = csys['telescope']
-        logger.debug(f"Telescope is {telescope}.")
-
-        return csys['telescope']
-
-
-    def get_feed_basis(self) -> None:
+    def get_feed_basis(self):
         """
         Get the feed basis, from the telescope name.
         """
@@ -184,9 +139,12 @@ class zernikeBeam():
 
 
 
-    def get_dish_diameter(self) -> None:
+    def get_dish_diameter(self, templateim):
         """
         Get the dish diameter for different instruments.
+
+        Input:
+        templateim      Name of the input template image, string
 
         Returns:
         None, sets self.dish_dia in place
@@ -197,11 +155,16 @@ class zernikeBeam():
                         "diameter. Using the input of {self.dish_dia} m")
             return
 
+        ia.open(templateim)
+        csys = ia.coordsys().torecord()
+        ia.close()
+
+        self.telescope = csys['telescope']
+
         if 'vla' in self.telescope.lower():
             self.dish_dia = 25
         elif 'meerkat' in self.telescope.lower():
-            #self.dish_dia = 13.5
-            self.dish_dia = 15
+            self.dish_dia = 13.5
         elif 'alma' in self.telescope.lower():
             self.dish_dia = 12
         elif 'gmrt' in self.telescope.lower():
@@ -210,25 +173,30 @@ class zernikeBeam():
             raise ValueError('Unknown telescope type. Please initialize the '
                              'class with the dish_diameter value in metres.')
 
-        logger.info(f"Using dish diameter of {self.dish_dia}m for telescope {self.telescope}.")
 
-
-    def get_npix_aperture(self, templateim: str) -> Union[int, float]:
+    def get_npix_aperture(self, templateim):
         """
         Calculate the number of pixels across the aperture from the template
         image.
-
-        Inputs:
-        templateim      Name of the input template image, str
-
-        Returns:
-        npix            The number of pixels across the aperture, int
-        cdelt           The pixel delta in lambda, float
         """
 
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
         ia.close()
+
+        #try:
+        #    unit = template_csys['spectral2']['unit']
+        #except KeyError:
+        #    unit = template_csys['spectral1']['unit']
+
+        #if unit.lower() == 'hz':
+        #    fac = 1
+        #elif unit.lower() == 'mhz':
+        #    fac = 1e-6
+        #elif unit.lower() == 'ghz':
+        #    fac = 1e-9
+        #else:
+        #    raise ValueError("Unknown unit in image.")
 
         try:
             freq = template_csys['spectral2']['wcs']['crval']
@@ -236,12 +204,8 @@ class zernikeBeam():
             freq = template_csys['spectral1']['wcs']['crval']
 
         lambd = 299792458/freq
-        self.lambd = lambd
 
-        print("lambda ", self.lambd)
-        print("freq ", freq)
-
-        outname = make_unique('fft.im')
+        outname = 'fft.im'
         wipe_file(outname)
         ia.open(templateim)
         ia.fft(complex=outname)
@@ -252,65 +216,35 @@ class zernikeBeam():
         cdelt = csys['linear0']['cdelt']
         cdelt = np.abs(cdelt[0])
 
-        self.ftcoords = csys
-        self.ft_cdelt = [cdelt, cdelt]
-        self.ft_cdelt_os = [cdelt/self.oversamp, cdelt/self.oversamp]
-
-        print("self.ft_cdelt ", self.ft_cdelt)
-        print("self.ft_cdelt_os ", self.ft_cdelt_os)
-        print("self.oversamp ", self.oversamp)
-
         # Lambda scaling - accounts for changes in effective illumination across the band
         try:
-            self.eta = self.df['eta'].unique()[0]
-            logger.info(f"Using eta value of {self.eta}.")
+            eta = self.df['eta'].unique()[0]
         except KeyError:
             logger.info("Eta column does not exist in the input CSV file, not "
                         "applying frequency dependent scaling.")
-            self.eta = 1.6
-
-        # For MeerKAT (and maybe other offset Gregorians)
-        # The dish is elliptical, and the ratio of the major to minor axis changes from SPW to SPW
-        # If this column is present, use it to generate an aperture of the right shape
-        try:
-            self.xyratio = self.df['xyratio'].unique()[0]
-            self.xyratio = 1.
-            logger.info(f"Using xyratio of {self.xyratio}.")
-        except KeyError:
-            logger.info("xyratio column does not exist in the input CSV file, not "
-                        "applying frequency dependent 2D aperture scaling.")
-            self.xyratio = 1.
+            eta = 1.
 
         # Number of pixels across the aperture
-        npix = self.dish_dia*self.eta/lambd
-        self.ft_npix = int(np.floor(npix/self.ft_cdelt[0]))
-        self.ft_npix_os = int(np.floor(npix/self.ft_cdelt_os[0]))
+        npix = self.dish_dia*eta/lambd
+        npix = int(np.ceil(npix/cdelt))
 
-        print("npix is ", npix)
-        print("self.ft_npix", self.ft_npix)
-        print("self.ft_npix_os", self.ft_npix_os)
-        print("self.ft_cdelt ", self.ft_cdelt)
-        print("self.ft_cdelt_os ", self.ft_cdelt_os)
+        if npix < 10:
+            npix *= 2
+            cdelt /= 2.
 
         # So aperture is centred on a single pixel, to avoid offsets in the image
-        #if npix % 2 == 0:
-        #    npix += 1
+        if npix % 2 == 0:
+            npix += 1
 
         wipe_file(outname)
 
+        return int(npix), cdelt
 
 
-    def powl(self, base: float, exp: float) -> float:
+
+    def powl(self, base, exp):
         """
-        Raise base to an exponent quickly.
         Algorithm taken from https://stackoverflow.com/questions/2198138/calculating-powers-e-g-211-quickly
-
-        Inputs:
-        base        Input base, float
-        exp         Exponent to raise to, float
-
-        Returns:
-        base^exp    Base raised to the exponent, float
         """
         if exp == 0:
             return 1
@@ -322,18 +256,10 @@ class zernikeBeam():
             return self.powl(base * base, exp // 2)
 
 
-    def gen_zernike_surface(self, coeffs: np.ndarray, x: np.ndarray, y:np.ndarray) -> np.ndarray:
+    def gen_zernike_surface(self, coeffs, x, y):
 
         '''
         Use polynomial approximations to generate Zernike surface
-
-        Inputs:
-        coeffs      List of coefficients, np.ndarray
-        x           2D array of X coordinates, from np.meshgrid
-        y           2D array of Y coordinates, from np.meshgrid
-
-        Returns:
-        ZW          The Zernike surface, np.ndarray
         '''
 
         #Setting coefficients array
@@ -418,20 +344,12 @@ class zernikeBeam():
         return ZW
 
 
-    def pad_image(self, inpdat: np.ndarray) -> np.ndarray:
+    def pad_image(self, inpdat):
         """
         Pad the input image by self.padfac and return the numpy array
-
-        Inputs:
-        inpdat      Input image data, 2D array
-
-        Returns:
-        paddat      Padded image data, 2D array
         """
 
         shape = inpdat.shape
-        logger.debug("Aperture shape ", shape)
-
         try:
             padshape = [shape[0]*self.padfac, shape[1]*self.padfac, shape[2], shape[3]]
         except IndexError:
@@ -440,51 +358,44 @@ class zernikeBeam():
             except IndexError:
                 padshape = [shape[0]*self.padfac, shape[1]*self.padfac, 1, 1]
 
-        logger.debug("Padde aperture shape ", shape)
-
         paddat = np.zeros(padshape, dtype=complex)
 
         cx, cy = shape[0]//2, shape[1]//2
         pcx, pcy = padshape[0]//2, padshape[1]//2
 
         if shape[0] % 2:
-            slicex = slice(pcx-cx, pcx+cx+1)
+            paddat[pcx-cx:pcx+cx+1, pcy-cy:pcy+cy+1] = inpdat
         else:
-            slicex = slice(pcx-cx, pcx+cx)
+            paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
-        if shape[1] % 2:
-            slicey = slice(pcy-cy, pcy+cy+1)
-        else:
-            slicey = slice(pcy-cy, pcy+cy)
+        if len(self.parang) > 0:
+            if len(self.parang) == 1:
+                logger.info(f"Rotating to parallactic angle {self.parang}")
+                parang = self.parang[0]
+                paddat_r = rotate(paddat.real, angle=parang, reshape=False)
+                paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
+            elif len(self.parang) == 2:
+                logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
+                paddat_r= 0
+                paddat_i= 0
+                npa = 0
+                # Average over PA
+                for pp in np.linspace(self.parang[0], self.parang[1], 5):
+                    paddat_r += rotate(paddat.real, angle=pp, reshape=False)
+                    paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
+                    npa += 1
 
-        #if shape[0] % 2:
-        #    paddat[pcx-cx:pcx+cx+1, pcy-cy:pcy+cy+1] = inpdat
-        #else:
-        paddat[slicex, slicey] = inpdat
+                paddat_r /= npa
+                paddat_i /= npa
+            else:
+                raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
 
-        if self.parang != 0:
-            logger.info(f"Rotating to parallactic angle {self.parang}")
-            paddat = self.rotate_image(paddat, self.parang)
-
-        if self.parang_file is not None:
-            logger.info(f"Calculating weighted parang average from {self.parang_file}")
-
-            pfile_dat = np.loadtxt(self.parang_file)
-            parangs = pfile_dat.T[0]
-            weights = pfile_dat.T[1]
-
-            paddat_wavg = np.zeros_like(paddat)
-            for pp, ww in zip(parangs, weights):
-                rotdat = self.rotate_image(paddat, pp)
-                paddat_wavg += rotdat * ww
-            paddat_wavg /= np.sum(ww)
-
-            paddat = paddat_wavg
+            paddat = paddat_r + 1j*paddat_i
 
         return paddat
 
 
-    def gen_jones_beams(self) -> list[str]:
+    def gen_jones_beams(self):
         """
         Generate the Jones beams from the aperture coefficients.
 
@@ -494,49 +405,15 @@ class zernikeBeam():
         Returns:
         beamnames       List of filenames for Jones beams, list of str
         """
-
-
-        # If XYratio != 1, aperture is not circular
-        #if self.xyratio != 1:
-        #    xnpix = int(np.round(self.ft_npix_os * self.xyratio))
-        #    #x = np.linspace(-1, 1, xnpix)
-        #    x = np.arange(-1, 1, self.ft_cdelt_os/xnpix)
-        #else:
-        #    #x = np.linspace(-1, 1, self.npix)
-        #    x = np.arange(-1, 1, self.ft_cdelt_os/self.ft_npix_os)
-
-        #y = np.linspace(-1, 1, self.npix)
-
-        #self.ft_cdelt_os[0] *= self.xyratio
-
-        stepsize = (self.ft_cdelt_os[1]/self.ft_npix_os)
-
-        # Force X & Y to be the same size
-        x = np.arange(-1 + stepsize, 1 + stepsize, self.ft_cdelt_os[1]/self.ft_npix_os)
-        y = np.arange(-1, 1, self.ft_cdelt_os[1]/self.ft_npix_os)
-
-        #if self.ft_npix_os % 2 == 0:
-        #    x = np.linspace(-1, 1, self.ft_npix_os+1)
-        #    y = np.linspace(-1, 1, self.ft_npix_os+1)
-        #else:
-        #    x = np.linspace(-1, 1, self.ft_npix_os)
-        #    y = np.linspace(-1, 1, self.ft_npix_os)
-
-        print("number of pixels in X (oversamp)", x.size)
-        print("number of pixels in Y (oversamp)", y.size)
+        x = np.linspace(-1, 1, self.npix)
+        y = np.linspace(-1, 1, self.npix)
 
         xx, yy = np.meshgrid(x, y)
         maskidx = np.where(np.sqrt(xx**2 + yy**2) > 1)
 
-        # Oversampled aperture
-        jonesnames_os = ['J00_ap_os.im', 'J01_ap_os.im', 'J10_ap_os.im', 'J11_ap_os.im']
         jonesnames = ['J00_ap.im', 'J01_ap.im', 'J10_ap.im', 'J11_ap.im']
 
-        [wipe_file(jj) for jj in jonesnames_os]
         [wipe_file(jj) for jj in jonesnames]
-
-        jonesnames_os = [make_unique(jj) for jj in jonesnames_os]
-        jonesnames = [make_unique(jj) for jj in jonesnames]
 
         stokes = self.df['#stokes'].unique()
         for idx, ss in enumerate(stokes):
@@ -549,30 +426,15 @@ class zernikeBeam():
             zaperture[maskidx] = 0
 
             # Python has the array flipped relative to what CASA wants
-            zaperture = np.flipud(np.fliplr(zaperture))
+            zaperture = np.fliplr(zaperture)
 
-            ft_csys_os = self.ftcoords
-            ft_csys_os['linear0']['cdelt'] = self.ft_cdelt_os
-            ft_csys_os['linear0']['crpix'] = [xx.shape[0]//2, xx.shape[1]//2]
-
-            ia.fromarray(jonesnames_os[idx], zaperture[:,:,None,None], linear=True, csys=ft_csys_os)
+            ia.fromarray(jonesnames[idx], zaperture[:,:,None,None], linear=True)
             ia.close()
-
-            imregrid_coords = imregrid(jonesnames_os[idx])
-            imregrid_coords['csys'] = self.ftcoords
-            #undersamp_ft_npix = int(np.floor(self.ft_npix_os/10.))
-            #imregrid_coords['shap'] = [undersamp_ft_npix, undersamp_ft_npix, 1, 1]
-
-            # Resample to original UV coords
-            imregrid(jonesnames_os[idx], output=jonesnames[idx], template=imregrid_coords)
 
         padjonesnames = ['pad_J00_ap.im', 'pad_J01_ap.im', 'pad_J10_ap.im', 'pad_J11_ap.im']
         beamnames = ['J00.im', 'J01.im', 'J10.im', 'J11.im']
         [wipe_file(jj) for jj in padjonesnames]
         [wipe_file(jj) for jj in beamnames]
-
-        padjonesnames = [make_unique(jj) for jj in padjonesnames]
-        beamnames = [make_unique(jj) for jj in beamnames]
 
         for jj, pp, bb in zip(jonesnames, padjonesnames, beamnames):
             ia.open(jj)
@@ -586,24 +448,25 @@ class zernikeBeam():
 
             ia.open(pp)
             csys = ia.coordsys().torecord()
-            padcdelt = self.ft_cdelt[0]/self.padfac
+            padcdelt = self.cdelt_aperture/self.padfac
             csys['linear0']['cdelt'] = [padcdelt, padcdelt, 1, 1]
             csys['linear0']['units'] = ['lambda', 'lambda', 'Hz', '']
             csys['telescope'] = self.telescope
             ia.setcoordsys(csys)
             ia.close()
 
+
             ia.open(pp)
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
-        #[wipe_file(jj) for jj in jonesnames]
-        #[wipe_file(jj) for jj in padjonesnames]
+        [wipe_file(jj) for jj in jonesnames]
+        [wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
 
 
-    def jones_to_mueller(self, beamnames: list[str]) -> list[str]:
+    def jones_to_mueller(self, beamnames):
         """
         Convert the input Jones beams to Mueller beams
 
@@ -667,7 +530,7 @@ class zernikeBeam():
             dat /= maxv
             ia.close()
 
-            # ia.fft() put it into linear coords, dump it back into SkyCoord
+            # ia.fft() put it into lienar coords, dump it back into SkyCoord
             shutil.rmtree(ss)
             ia.fromarray(ss, dat)
             ia.close()
@@ -676,17 +539,14 @@ class zernikeBeam():
 
         return stokesnames
 
-
-    def _do_regrid(self, inname: str, templatecoord: dict, outcsys: dict) -> None:
+    def _do_regrid(self, inname, templatecoord, outcsys):
         """
-        Actually perform the regrid. Abstracted into it's own function for
+        Actually perform the regird. Abstracted into it's own function for
         multi-processing purposes.
 
         Inputs:
-        inname              Name of the input image, string
         templatecoord       Template coordinate system, dict returned from imregrid()
-        outcsys             The co-ordinate system to apply to the input image prior to regrid,
-                            dict returned from imregrid()
+        inname              Name of the input image, string
 
         Returns:
         None
@@ -697,7 +557,6 @@ class zernikeBeam():
         ia.close()
 
         outname = f'tmp_{inname}.im'
-        outname = make_unique(outname)
         wipe_file(outname)
 
         imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
@@ -706,7 +565,7 @@ class zernikeBeam():
         shutil.move(outname, inname)
 
 
-    def regrid_to_template(self, stokes_beams: list[str], templateim: str) -> None:
+    def regrid_to_template(self, stokes_beams, templateim):
         """
         Match co-ordinates between the template image and the PBs, and regrid
         the PBs to lie on the same co-ordinate grid.
@@ -728,8 +587,7 @@ class zernikeBeam():
         shape = ia.shape()
         ia.close()
 
-        #imextent = 1./(self.ft_cdelt_os)
-        imextent = 1./(self.ft_cdelt_os[0]*self.lambd)
+        imextent = 1./(self.cdelt_aperture)
         imcdelt = (imextent/shape[0])
 
         templatecoord = imregrid(templateim)
@@ -757,25 +615,44 @@ class zernikeBeam():
                 self._do_regrid(ss, templatecoord, outcsys)
 
 
-
-    def rotate_image(self, indat: np.ndarray, parang: float) -> np.ndarray:
+    def _do_rotate(self, imname, parang):
         """
-        Rotate the input data by parang degrees in place.
+        Rotate the input image by parang degrees in place.
 
         Inputs:
-        indat           Input image data, 2D array
+        imname          Input image name, string
         parang          Parallactic angle in deg, float
 
         Returns:
-        rotdat          Rotated image, 2D array
+        None
         """
 
-        if indat.dtype == complex:
-            indat_r = rotate(indat.real, angle=parang, reshape=False)
-            indat_i = rotate(indat.imag, angle=parang, reshape=False)
+        tmpname = 'tmp_' + imname
+        ia.open(imname)
+        ia.rotate(outfile=tmpname, pa=f'{parang}deg')
+        ia.close()
 
-            rotdat = indat_r + 1j*indat_i
+        shutil.move(tmpname, imname)
+
+    def rotate_beam(self, stokes_beams, parang):
+        """
+        Rotate the beam by parang degrees
+
+        Inputs:
+        stokes_beams    Names of the input beams, array of strings
+        parang          Parallactic angle in deg, float
+
+        Returns:
+        stokes_beams    Rotated beams (in place), array of strings
+        """
+
+        if self.parallel and not self.do_stokesi_only:
+            _do_rotate_partial = partian(self._do_rotate, parang=parang)
+            pool = multiprocessing.Pool(4)
+            pool.map(_do_rotate_partial, stokes_beams)
         else:
-            rotdat = rotate(indat, angle=parang, reshape=False)
+            for iss, ss in enumerate(stokes_beams):
+                if self.do_stokesi_only and iss > 0:
+                        break
 
-        return rotdat
+                self._do_rotate(ss, parang)
