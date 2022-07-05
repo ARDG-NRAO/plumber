@@ -499,35 +499,25 @@ class zernikeBeam():
         [wipe_file(ss) for ss in stokesnames]
 
         if self.islinear:
-            # This is probably true for ASKAP as well
-            if 'meerkat' in self.telescope.lower():
-                Sdag_M_S = [
-                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
-                    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
-                ]
-            else: # This works for ALMA
-                Sdag_M_S = [
-                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
-                    'real(CONJ(IM0)*IM0 - CONJ(IM1)*IM1 + CONJ(IM2)*IM2 - CONJ(IM3)*IM3)',
-                    'real(CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)',
-                    'real(1i*(CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))'
-                ]
+            Sdag_M = [
+                'IM0*CONJ(IM0) + IM2*CONJ(IM2)',
+                '-IM0*CONJ(IM1) + IM2*CONJ(IM3)',
+                '-IM1*CONJ(IM0) + IM3*CONJ(IM2)',
+                'IM1*CONJ(IM1) + IM3*CONJ(IM3)'
+            ]
         else:
-            Sdag_M_S = [
-                'real( CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3 )/2.',
-                'real( CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2 )/2.',
-                'real( 1i*(CONJ(IM0)*IM1 + CONJ(IM2)*IM3) - 1i*(CONJ(IM1)*IM0 + CONJ(IM3)*IM2) )/2.',
-                'real( CONJ(IM0)*IM0 - CONJ(IM1)*IM1 + CONJ(IM2)*IM2 - CONJ(IM3)*IM3 )/2.'
+            Sdag_M = [
+                'IM0*CONJ(IM0) + IM2*CONJ(IM2',
+                '-IM0*CONJ(IM1) + IM2*IM3(CONJ)',
+                '-IM1*CONJ(IM0) + IM3*CONJ(IM2)',
+                'IM1*CONJ(IM1) + IM3*CONJ(IM3)'
             ]
 
-
-        immath(imagename=beamnames, outfile=stokesnames[0], expr=Sdag_M_S[0])
+        immath(imagename=beamnames, outfile=stokesnames[0], expr=Sdag_M[0])
         if not self.do_stokesi_only:
-            immath(imagename=beamnames, outfile=stokesnames[1], expr=Sdag_M_S[1])
-            immath(imagename=beamnames, outfile=stokesnames[2], expr=Sdag_M_S[2])
-            immath(imagename=beamnames, outfile=stokesnames[3], expr=Sdag_M_S[3])
+            immath(imagename=beamnames, outfile=stokesnames[1], expr=Sdag_M[1])
+            immath(imagename=beamnames, outfile=stokesnames[2], expr=Sdag_M[2])
+            immath(imagename=beamnames, outfile=stokesnames[3], expr=Sdag_M[3])
 
         ia.open(stokesnames[0])
         dat = ia.getchunk()
