@@ -77,7 +77,7 @@ class zernikeBeam():
     def __init__(self):
         self.freq = None
         self.padfac = None
-        self.dish_dia = None
+        self.dish_dia = []
         self.islinear = None
         self.parallel = False
         self.telescope = None
@@ -97,7 +97,7 @@ class zernikeBeam():
 
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False):
+    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -198,19 +198,19 @@ class zernikeBeam():
             return
 
         if 'vla' in self.telescope.lower():
-            self.dish_dia = 25
+            self.dish_dia = [25, 25]
         elif 'meerkat' in self.telescope.lower():
             #self.dish_dia = 13.5
-            self.dish_dia = 15
+            self.dish_dia = [15, 13.5]
         elif 'alma' in self.telescope.lower():
-            self.dish_dia = 12
+            self.dish_dia = [12, 12]
         elif 'gmrt' in self.telescope.lower():
-            self.dish_dia = 45
+            self.dish_dia = [45, 45]
         else:
             raise ValueError('Unknown telescope type. Please initialize the '
                              'class with the dish_diameter value in metres.')
 
-        logger.info(f"Using dish diameter of {self.dish_dia}m for telescope {self.telescope}.")
+        logger.info(f"Using dish diameter of ({self.dish_dia[0]}m, {self.dish_dia[1]}m) for telescope {self.telescope}.")
 
 
     def get_npix_aperture(self, templateim: str) -> Union[int, float]:
@@ -282,9 +282,9 @@ class zernikeBeam():
             self.xyratio = 1.
 
         # Number of pixels across the aperture
-        npix = self.dish_dia*self.eta/lambd
-        self.ft_npix = int(np.floor(npix/self.ft_cdelt[0]))
-        self.ft_npix_os = int(np.floor(npix/self.ft_cdelt_os[0]))
+        npix = [dia*self.eta/lambd for dia in self.dish_dia]
+        self.ft_npix = [int(np.floor(nn/self.ft_cdelt[0])) for nn in npix]
+        self.ft_npix_os = [int(np.floor(nn/self.ft_cdelt_os[0])) for nn in npix]
 
         print("npix is ", npix)
         print("self.ft_npix", self.ft_npix)
@@ -509,11 +509,13 @@ class zernikeBeam():
 
         #self.ft_cdelt_os[0] *= self.xyratio
 
-        stepsize = (self.ft_cdelt_os[1]/self.ft_npix_os)
+        stepsize = [(os/npix) for os, npix in zip(self.ft_cdelt_os, self.ft_npix_os)]
 
         # Force X & Y to be the same size
-        x = np.arange(-1 + stepsize, 1 + stepsize, self.ft_cdelt_os[1]/self.ft_npix_os)
-        y = np.arange(-1, 1, self.ft_cdelt_os[1]/self.ft_npix_os)
+        x = np.arange(-1 + stepsize[0], 1 + stepsize[0], self.ft_cdelt_os[0]/self.ft_npix_os[0])
+        y = np.arange(-1 + stepsize[1], 1 + stepsize[1], self.ft_cdelt_os[1]/self.ft_npix_os[1])
+        #y = np.arange(-1, 1, self.ft_cdelt_os[1]/self.ft_npix_os)
+
 
         #if self.ft_npix_os % 2 == 0:
         #    x = np.linspace(-1, 1, self.ft_npix_os+1)
@@ -597,8 +599,8 @@ class zernikeBeam():
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
-        #[wipe_file(jj) for jj in jonesnames]
-        #[wipe_file(jj) for jj in padjonesnames]
+        [wipe_file(jj) for jj in jonesnames]
+        [wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
 
