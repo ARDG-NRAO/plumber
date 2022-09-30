@@ -22,8 +22,10 @@ from functools import partial, wraps
 
 import logging
 logger = logging.getLogger(__name__)
+logger.setLevel('DEBUG')
 
 from plumber.misc import wipe_file, make_unique
+from plumber.image import parse_image
 
 from casatasks import immath, imregrid
 from casatools import image
@@ -91,13 +93,13 @@ class zernikeBeam():
         self.ft_npix_os = 0
 
         self.lambd = 0
+        self.scale = [None, None]
+        self.scale_cdelt = [None, None]
 
         self.oversamp = 20
 
 
-
-
-    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False):
+    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None, scale_cdelt=None):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -123,10 +125,6 @@ class zernikeBeam():
         self.islinear = islinear
         self.get_feed_basis()
 
-        # Creates ftcoords and sets ft_cdelt and ft_cdelt_os
-        # Sets ft_npix and ft_npix_os
-        self.get_npix_aperture(templateim)
-
         self.padfac = int(padfac)
         self.parallel = parallel
         self.parang = parang
@@ -135,6 +133,18 @@ class zernikeBeam():
         # In MHz
         self.freq = df['freq'].unique()[0]
         self.do_stokesi_only = stokesi
+
+        # List of floats, to scale in X and Y respectively
+        self.scale = scale
+
+        # List of floats, to scale in X and Y respectively
+        logger.debug(f"Scale_cdelt is {scale_cdelt}")
+        self.scale_cdelt = scale_cdelt
+        logger.debug(f"self.scale_cdelt is {self.scale_cdelt}")
+
+        # Creates ftcoords and sets ft_cdelt and ft_cdelt_os
+        # Sets ft_npix and ft_npix_os
+        self.get_npix_aperture(templateim)
 
 
     def get_telescope(self, templateim: str) -> str:
@@ -178,10 +188,9 @@ class zernikeBeam():
         elif "gmrt" in self.telescope.lower() and self.freq >= 9e2:
             self.islinear = True
         else:
-            raise ValueError("Unable to determine feed bsis, unknown telescope. "
+            raise ValueError("Unable to determine feed basis, unknown telescope. "
             "Please pass in the feed basis via the islinear paramter to "
             ".initialize()")
-
 
 
     def get_dish_diameter(self) -> None:
@@ -201,7 +210,7 @@ class zernikeBeam():
             self.dish_dia = [25, 25]
         elif 'meerkat' in self.telescope.lower():
             #self.dish_dia = 13.5
-            self.dish_dia = [15, 13.5]
+            self.dish_dia = [13.5, 13.5]
         elif 'alma' in self.telescope.lower():
             self.dish_dia = [12, 12]
         elif 'gmrt' in self.telescope.lower():
@@ -226,39 +235,39 @@ class zernikeBeam():
         cdelt           The pixel delta in lambda, float
         """
 
+        imsize, imfreq, is_stokes_cube = parse_image(templateim)
+        freq = imfreq[0].value
+
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
+        self.template_csys = deepcopy(template_csys)
         ia.close()
-
-        try:
-            freq = template_csys['spectral2']['wcs']['crval']
-        except KeyError:
-            freq = template_csys['spectral1']['wcs']['crval']
 
         lambd = 299792458/freq
         self.lambd = lambd
 
-        print("lambda ", self.lambd)
-        print("freq ", freq)
+        logger.debug(f"lambda {self.lambd}")
+        logger.debug(f"freq {self.freq}")
 
         outname = make_unique('fft.im')
         wipe_file(outname)
+
         ia.open(templateim)
         ia.fft(complex=outname)
         ia.close()
 
         ia.open(outname)
         csys = ia.coordsys().torecord()
-        cdelt = csys['linear0']['cdelt']
+        cdelt = deepcopy(csys['linear0']['cdelt'])
         cdelt = np.abs(cdelt[0])
 
         self.ftcoords = csys
         self.ft_cdelt = [cdelt, cdelt]
         self.ft_cdelt_os = [cdelt/self.oversamp, cdelt/self.oversamp]
 
-        print("self.ft_cdelt ", self.ft_cdelt)
-        print("self.ft_cdelt_os ", self.ft_cdelt_os)
-        print("self.oversamp ", self.oversamp)
+        logger.debug(f"self.ft_cdelt {self.ft_cdelt}")
+        logger.debug(f"self.ft_cdelt_os {self.ft_cdelt_os}")
+        logger.debug(f"self.oversamp {self.oversamp}")
 
         # Lambda scaling - accounts for changes in effective illumination across the band
         try:
@@ -267,7 +276,7 @@ class zernikeBeam():
         except KeyError:
             logger.info("Eta column does not exist in the input CSV file, not "
                         "applying frequency dependent scaling.")
-            self.eta = 1.6
+            self.eta = 1.0
 
         # For MeerKAT (and maybe other offset Gregorians)
         # The dish is elliptical, and the ratio of the major to minor axis changes from SPW to SPW
@@ -281,20 +290,36 @@ class zernikeBeam():
                         "applying frequency dependent 2D aperture scaling.")
             self.xyratio = 1.
 
+        if all(self.scale_cdelt):
+            self.ft_cdelt[0] *= self.scale_cdelt[0]
+            self.ft_cdelt[1] *= self.scale_cdelt[1]
+
+            self.ft_cdelt_os[0] *= self.scale_cdelt[0]
+            self.ft_cdelt_os[1] *= self.scale_cdelt[1]
+
         # Number of pixels across the aperture
         npix = [dia*self.eta/lambd for dia in self.dish_dia]
-        self.ft_npix = [int(np.floor(nn/self.ft_cdelt[0])) for nn in npix]
-        self.ft_npix_os = [int(np.floor(nn/self.ft_cdelt_os[0])) for nn in npix]
+        self.ft_npix = [int(np.floor(nn/ft_cdelt)) for nn, ft_cdelt in zip(npix, self.ft_cdelt)]
+        self.ft_npix_os = [int(np.floor(nn/ft_cdelt_os)) for nn, ft_cdelt_os in zip(npix, self.ft_cdelt_os)]
 
-        print("npix is ", npix)
-        print("self.ft_npix", self.ft_npix)
-        print("self.ft_npix_os", self.ft_npix_os)
-        print("self.ft_cdelt ", self.ft_cdelt)
-        print("self.ft_cdelt_os ", self.ft_cdelt_os)
 
         # So aperture is centred on a single pixel, to avoid offsets in the image
-        #if npix % 2 == 0:
-        #    npix += 1
+        #self.ft_npix_os = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix_os]
+        #self.ft_npix = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix]
+
+        # Scale it by this amount
+        if all(self.scale):
+            self.ft_npix_os[0] *= self.scale[0]
+            self.ft_npix_os[1] *= self.scale[1]
+
+            self.ft_npix_os = [int(np.round(nn)) for nn in self.ft_npix_os]
+
+        logger.debug(f"Scale is {self.scale}")
+        logger.debug(f"npix is {npix}")
+        logger.debug(f"self.ft_npix {self.ft_npix}")
+        logger.debug(f"self.ft_npix_os {self.ft_npix_os}")
+        logger.debug(f"self.ft_cdelt {self.ft_cdelt}")
+        logger.debug(f"self.ft_cdelt_os {self.ft_cdelt_os}")
 
         wipe_file(outname)
 
@@ -430,7 +455,7 @@ class zernikeBeam():
         """
 
         shape = inpdat.shape
-        logger.debug("Aperture shape ", shape)
+        logger.debug(f"Aperture shape {shape}")
 
         try:
             padshape = [shape[0]*self.padfac, shape[1]*self.padfac, shape[2], shape[3]]
@@ -440,7 +465,7 @@ class zernikeBeam():
             except IndexError:
                 padshape = [shape[0]*self.padfac, shape[1]*self.padfac, 1, 1]
 
-        logger.debug("Padde aperture shape ", shape)
+        logger.debug(f"Padded aperture shape {shape}")
 
         paddat = np.zeros(padshape, dtype=complex)
 
@@ -456,6 +481,9 @@ class zernikeBeam():
             slicey = slice(pcy-cy, pcy+cy+1)
         else:
             slicey = slice(pcy-cy, pcy+cy)
+
+        #slicex = slice(pcx-cx, pcx+cx)
+        #slicey = slice(pcy-cy, pcy+cy)
 
         #if shape[0] % 2:
         #    paddat[pcx-cx:pcx+cx+1, pcy-cy:pcy+cy+1] = inpdat
@@ -495,7 +523,6 @@ class zernikeBeam():
         beamnames       List of filenames for Jones beams, list of str
         """
 
-
         # If XYratio != 1, aperture is not circular
         #if self.xyratio != 1:
         #    xnpix = int(np.round(self.ft_npix_os * self.xyratio))
@@ -511,21 +538,29 @@ class zernikeBeam():
 
         stepsize = [(os/npix) for os, npix in zip(self.ft_cdelt_os, self.ft_npix_os)]
 
+        #logger.debug(f"Stepsize is {stepsize}")
+        logger.debug(f"ft_cdelt_os {self.ft_cdelt_os}")
+
         # Force X & Y to be the same size
-        x = np.arange(-1 + stepsize[0], 1 + stepsize[0], self.ft_cdelt_os[0]/self.ft_npix_os[0])
-        y = np.arange(-1 + stepsize[1], 1 + stepsize[1], self.ft_cdelt_os[1]/self.ft_npix_os[1])
+        #x = np.arange(-1 + stepsize[0], 1 + stepsize[0], stepsize[0])
+        #y = np.arange(-1 + stepsize[1], 1 + stepsize[1], stepsize[1])
         #y = np.arange(-1, 1, self.ft_cdelt_os[1]/self.ft_npix_os)
 
+        #x = np.linspace(-1, 1, self.ft_npix_os[0])
+        #y = np.linspace(-1, 1, self.ft_npix_os[1])
 
-        #if self.ft_npix_os % 2 == 0:
-        #    x = np.linspace(-1, 1, self.ft_npix_os+1)
-        #    y = np.linspace(-1, 1, self.ft_npix_os+1)
-        #else:
-        #    x = np.linspace(-1, 1, self.ft_npix_os)
-        #    y = np.linspace(-1, 1, self.ft_npix_os)
+        if self.ft_npix_os[0] % 2 == 0:
+            x = np.linspace(-1, 1, self.ft_npix_os[0]+1)
+        else:
+            x = np.linspace(-1, 1, self.ft_npix_os[0])
 
-        print("number of pixels in X (oversamp)", x.size)
-        print("number of pixels in Y (oversamp)", y.size)
+        if self.ft_npix_os[1] % 2 == 0:
+            y = np.linspace(-1, 1, self.ft_npix_os[1]+1)
+        else:
+            y = np.linspace(-1, 1, self.ft_npix_os[1])
+
+        logger.debug(f"number of pixels in X (oversamp) {x.size}")
+        logger.debug(f"number of pixels in Y (oversamp) {y.size}")
 
         xx, yy = np.meshgrid(x, y)
         maskidx = np.where(np.sqrt(xx**2 + yy**2) > 1)
@@ -551,37 +586,43 @@ class zernikeBeam():
             zaperture[maskidx] = 0
 
             # Python has the array flipped relative to what CASA wants
-            zaperture = np.flipud(np.fliplr(zaperture))
+            #zaperture = np.flipud(np.fliplr(zaperture))
+            zaperture = np.fliplr(zaperture)
 
-            ft_csys_os = self.ftcoords
+            ft_csys_os = deepcopy(self.ftcoords)
             ft_csys_os['linear0']['cdelt'] = self.ft_cdelt_os
             ft_csys_os['linear0']['crpix'] = [xx.shape[0]//2, xx.shape[1]//2]
+            # The ref pixel is the input imsize//2 (ex: 4096,4096) but our
+            # aperture does not span that many pixels, so adjust
+            self.ftcoords['linear0']['crpix'] = [xx.shape[0]//2, xx.shape[1]//2]
 
             ia.fromarray(jonesnames_os[idx], zaperture[:,:,None,None], linear=True, csys=ft_csys_os)
             ia.close()
 
-            imregrid_coords = imregrid(jonesnames_os[idx])
-            imregrid_coords['csys'] = self.ftcoords
-            #undersamp_ft_npix = int(np.floor(self.ft_npix_os/10.))
-            #imregrid_coords['shap'] = [undersamp_ft_npix, undersamp_ft_npix, 1, 1]
+            #imregrid_coords = imregrid(jonesnames_os[idx])
+            #imregrid_coords['csys'] = self.ftcoords
 
-            # Resample to original UV coords
-            imregrid(jonesnames_os[idx], output=jonesnames[idx], template=imregrid_coords)
+            ## Resample to original UV coords
+            #imregrid(jonesnames_os[idx], output=jonesnames[idx], template=imregrid_coords)
 
         padjonesnames = ['pad_J00_ap.im', 'pad_J01_ap.im', 'pad_J10_ap.im', 'pad_J11_ap.im']
         beamnames = ['J00.im', 'J01.im', 'J10.im', 'J11.im']
+
         [wipe_file(jj) for jj in padjonesnames]
         [wipe_file(jj) for jj in beamnames]
 
         padjonesnames = [make_unique(jj) for jj in padjonesnames]
         beamnames = [make_unique(jj) for jj in beamnames]
 
-        for jj, pp, bb in zip(jonesnames, padjonesnames, beamnames):
+        for jj, pp, bb in zip(jonesnames_os, padjonesnames, beamnames):
             ia.open(jj)
             dat = ia.getchunk()
             ia.close()
 
             paddat = self.pad_image(dat)
+
+            #wipe_file(pp)
+            #shutil.copytree(jj, pp)
 
             ia.fromarray(pp, paddat, linear=True)
             ia.close()
@@ -593,16 +634,62 @@ class zernikeBeam():
             csys['linear0']['units'] = ['lambda', 'lambda', 'Hz', '']
             csys['telescope'] = self.telescope
             ia.setcoordsys(csys)
+            ia.putchunk(paddat)
             ia.close()
 
             ia.open(pp)
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
+            self.fix_jones_header(bb)
+
         [wipe_file(jj) for jj in jonesnames]
+        [wipe_file(jj) for jj in jonesnames_os]
         [wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
+
+
+    def fix_jones_header(self, beamname : str) -> None:
+        """
+        Fix the header of the Jones beams generated from the apertures.
+
+        The `ia.fft` function preserves the header information when performing a
+        reverse transformation, however it does not correctly assign the RA and
+        DEC axes, but rather sets them to be `1./linear` which imregrid does not
+        handle correctly.
+
+        The header is fixed in-place.
+
+        Inputs:
+        beamname    Name of the Jones beam, str
+
+        Returns:
+        None
+        """
+
+        ia.open(beamname)
+        csys = ia.coordsys().torecord()
+        beamdat = ia.getchunk()
+        ia.close()
+
+        wipe_file(beamname)
+
+        ia.fromarray(beamname, beamdat)
+        ia.close()
+
+        ia.open(beamname)
+        shape = ia.shape()
+        beamcsys = ia.coordsys().torecord()
+
+        beamcsys['direction0']['cdelt'][:2] = 2.0 * csys['linear0']['cdelt'][:2]
+        beamcsys['direction0']['crval'] = self.template_csys['direction0']['crval']
+        beamcsys['direction0']['latpole'] = self.template_csys['direction0']['latpole']
+        beamcsys['direction0']['longpole'] = self.template_csys['direction0']['longpole']
+        beamcsys['direction0']['units'] = ['rad', 'rad']
+
+        ia.setcoordsys(beamcsys)
+        ia.close()
 
 
     def jones_to_mueller(self, beamnames: list[str]) -> list[str]:
@@ -616,22 +703,46 @@ class zernikeBeam():
         stokesnames     List of Stokes beam names, list of str
         """
 
-        stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
-                       f'IQ_{self.telescope}_{self.freq}MHz.im',
-                       f'IU_{self.telescope}_{self.freq}MHz.im',
-                       f'IV_{self.telescope}_{self.freq}MHz.im']
+        if all(self.scale):
+            stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
+                          f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
+                          f'IU_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
+                          f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im']
+
+        #elif all(self.scale_cdelt):
+        #    stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+        #                  f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+        #                  f'IU_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+        #                  f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im']
+        elif all(self.scale) and all(self.scale_cdelt):
+            stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+                          f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+                          f'IU_{self.telescope}_{self.frq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
+                          f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im']
+        else:
+            stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
+                        f'IQ_{self.telescope}_{self.freq}MHz.im',
+                        f'IU_{self.telescope}_{self.freq}MHz.im',
+                        f'IV_{self.telescope}_{self.freq}MHz.im']
 
         [wipe_file(ss) for ss in stokesnames]
 
         if self.islinear:
             # This is probably true for ASKAP as well
             if 'meerkat' in self.telescope.lower():
+                #Sdag_M_S = [
+                #    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                #    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                #    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
+                #    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
+                #]
+
                 Sdag_M_S = [
-                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
-                    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
-                ]
+                    'IM0',
+                    'IM1',
+                    'IM2',
+                    'IM3'
+                    ]
             else: # This works for ALMA
                 Sdag_M_S = [
                     'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
@@ -667,12 +778,13 @@ class zernikeBeam():
             dat = ia.getchunk()
             # Normalize so StokesI peaks at 1.0
             dat /= maxv
+            ia.putchunk(dat)
             ia.close()
 
             # ia.fft() put it into linear coords, dump it back into SkyCoord
-            shutil.rmtree(ss)
-            ia.fromarray(ss, dat)
-            ia.close()
+            #shutil.rmtree(ss)
+            #ia.fromarray(ss, dat)
+            #ia.close()
 
         [wipe_file(ss) for ss in beamnames]
 
@@ -695,14 +807,45 @@ class zernikeBeam():
         """
 
         ia.open(inname)
+        dat = ia.getchunk()
         ia.setcoordsys(outcsys)
         ia.close()
 
-        outname = f'tmp_{inname}.im'
-        outname = make_unique(outname)
-        wipe_file(outname)
+        # Check if input is complex to speedup imregrid
+        is_complex = np.iscomplexobj(dat)
 
-        imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+        if is_complex:
+            inname_r = make_unique(f'{inname}_real.im')
+            inname_i = make_unique(f'{inname}_imag.im')
+
+            outname_r = make_unique(f'tmp_{inname}_real.im')
+            outname_i = make_unique(f'tmp_{inname}_imag.im')
+
+            wipe_file(outname_r)
+            wipe_file(outname_i)
+
+            immath(inname, outfile=inname_r, expr='REAL(IM0)')
+            immath(inname, outfile=inname_i, expr='IMAG(IM0)')
+
+            imregrid(inname_r, template=templatecoord, output=outname_r, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+            imregrid(inname_i, template=templatecoord, output=outname_i, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+
+            outname = f'tmp_{inname}.im'
+            outname = make_unique(outname)
+            wipe_file(outname)
+            immath([outname_r, outname_i], outfile=outname, expr='complex(IM0, IM1)')
+
+            wipe_file(outname_r)
+            wipe_file(outname_i)
+            wipe_file(inname_r)
+            wipe_file(inname_i)
+
+        else:
+            outname = f'tmp_{inname}.im'
+            outname = make_unique(outname)
+            wipe_file(outname)
+
+            imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
 
         shutil.rmtree(inname)
         shutil.move(outname, inname)
@@ -721,30 +864,31 @@ class zernikeBeam():
         None
         """
 
-        ia.open(templateim)
-        templatecsys = ia.coordsys().torecord()
-        ia.close()
+        #ia.open(templateim)
+        #templatecsys = ia.coordsys().torecord()
+        #ia.close()
 
         ia.open(stokes_beams[0])
-        dat = ia.getchunk()
-        shape = ia.shape()
+        outcsys = ia.coordsys().torecord()
+        #dat = ia.getchunk()
+        #shape = ia.shape()
         ia.close()
 
-        #imextent = 1./(self.ft_cdelt_os)
-        imextent = 1./(self.ft_cdelt_os[0]*self.lambd)
-        imcdelt = (imextent/shape[0])
+        ##imextent = 1./(self.ft_cdelt_os)
+        #imextent = 1./(self.ft_cdelt_os[0]*self.lambd)
+        #imcdelt = (imextent/shape[0])
 
         templatecoord = imregrid(templateim)
         # We are only generating one stokes plane at a time, so force stokes planes = 1
         templatecoord['shap'][-1] = 1
 
-        crpix = np.unravel_index(np.argmax(dat), shape)
-        outcsys = deepcopy(templatecsys)
-        outcsys['direction0']['crpix'] = np.asarray(crpix).astype(int)
-        outcsys['direction0']['cdelt'] = [-imcdelt, imcdelt]
-        outcsys['direction0']['units'] = ['rad', 'rad']
-        outcsys['direction0']['latpole'] = templatecoord['csys']['direction0']['latpole']
-        outcsys['direction0']['longpole'] = templatecoord['csys']['direction0']['longpole']
+        #crpix = np.unravel_index(np.argmax(dat), shape)
+        #outcsys = deepcopy(templatecsys)
+        #outcsys['direction0']['crpix'] = np.asarray(crpix).astype(int)
+        #outcsys['direction0']['cdelt'] = [-imcdelt, imcdelt]
+        #outcsys['direction0']['units'] = ['rad', 'rad']
+        #outcsys['direction0']['latpole'] = templatecoord['csys']['direction0']['latpole']
+        #outcsys['direction0']['longpole'] = templatecoord['csys']['direction0']['longpole']
 
         _do_regrid_partial = partial(self._do_regrid, templatecoord=templatecoord, outcsys=outcsys)
 
