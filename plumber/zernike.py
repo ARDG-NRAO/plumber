@@ -682,6 +682,21 @@ class zernikeBeam():
         beamcsys['direction0']['longpole'] = self.template_csys['direction0']['longpole']
         beamcsys['direction0']['units'] = ['rad', 'rad']
 
+        # Make sure the Stokes and Spectral axes are ordered in the same way
+        if 'spectral1' in self.template_csys:
+            beamcsys['spectral1'] = self.template_csys['spectral1']
+            beamcsys.pop('spectral2', None)
+        elif 'spectral2' in self.template_csys:
+            beamcsys['spectral2'] = self.template_csys['spectral2']
+            beamcsys.pop('spectral1', None)
+
+        if 'stokes1' in self.template_csys:
+            beamcsys['stokes1'] = self.template_csys['stokes1']
+            beamcsys.pop('stokes2', None)
+        elif 'stokes2' in self.template_csys:
+            beamcsys['stokes2'] = self.template_csys['stokes2']
+            beamcsys.pop('stokes1', None)
+
         ia.setcoordsys(beamcsys)
         ia.close()
 
@@ -697,46 +712,29 @@ class zernikeBeam():
         stokesnames     List of Stokes beam names, list of str
         """
 
-        if all(self.scale):
-            stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
-                          f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
-                          f'IU_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im',
-                          f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}.im']
-
-        #elif all(self.scale_cdelt):
-        #    stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-        #                  f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-        #                  f'IU_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-        #                  f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im']
-        elif all(self.scale) and all(self.scale_cdelt):
-            stokesnames = [f'I_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-                          f'IQ_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-                          f'IU_{self.telescope}_{self.frq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im',
-                          f'IV_{self.telescope}_{self.freq}MHz_scale_{self.scale[0]:.3f}_{self.scale[1]:.3f}_cdeltscale_{self.scale_cdelt[0]:.3f}_{self.scale_cdelt[1]:.3f}.im']
-        else:
-            stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
-                        f'IQ_{self.telescope}_{self.freq}MHz.im',
-                        f'IU_{self.telescope}_{self.freq}MHz.im',
-                        f'IV_{self.telescope}_{self.freq}MHz.im']
+        stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
+                    f'IQ_{self.telescope}_{self.freq}MHz.im',
+                    f'IU_{self.telescope}_{self.freq}MHz.im',
+                    f'IV_{self.telescope}_{self.freq}MHz.im']
 
         [wipe_file(ss) for ss in stokesnames]
 
         if self.islinear:
             # This is probably true for ASKAP as well
             if 'meerkat' in self.telescope.lower():
-                #Sdag_M_S = [
-                #    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                #    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
-                #    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
-                #    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
-                #]
-
                 Sdag_M_S = [
-                    'IM0',
-                    'IM1',
-                    'IM2',
-                    'IM3'
-                    ]
+                    'real(IM0*CONJ(IM0) + IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
+                    'real(-IM0*CONJ(IM0) - IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
+                    'real(-IM0*CONJ(IM2) - IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1))',
+                    'real(1i*(IM0*CONJ(IM2) + IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1)))'
+                ]
+                #Sdag_M_S = [
+                #    'IM0',
+                #    'IM1',
+                #    'IM2',
+                #    'IM3'
+                #    ]
+
             else: # This works for ALMA
                 Sdag_M_S = [
                     'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
