@@ -22,7 +22,7 @@ from functools import partial, wraps
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel('DEBUG')
+logger.setLevel('INFO')
 
 from plumber.misc import wipe_file, make_unique
 from plumber.image import parse_image
@@ -30,6 +30,9 @@ from plumber.image import parse_image
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
+
+# Use up to 4 concunrrent processes
+NCPU = min(multiprocessing.cpu_count(), 4)
 
 
 def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
@@ -893,7 +896,7 @@ class zernikeBeam():
         _do_regrid_partial = partial(self._do_regrid, templatecoord=templatecoord, outcsys=outcsys)
 
         if self.parallel and not self.do_stokesi_only:
-            pool = multiprocessing.Pool(4)
+            pool = multiprocessing.Pool(NCPU)
             pool.map(_do_regrid_partial, stokes_beams)
         else:
             for iss, ss in enumerate(stokes_beams):
