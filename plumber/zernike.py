@@ -98,6 +98,7 @@ class zernikeBeam():
         self.lambd = 0
         self.scale = [None, None]
         self.scale_cdelt = [None, None]
+        self.eta = [None, None]
 
         self.oversamp = 20
 
@@ -120,8 +121,7 @@ class zernikeBeam():
 
         self.df = df
         self.telescope = self.get_telescope(templateim)
-        self.eta = 1.
-        self.xyratio = 1.
+        self.eta = [1., 1.]
 
         self.dish_dia = dish_dia
         self.get_dish_diameter()
@@ -139,6 +139,7 @@ class zernikeBeam():
 
         # List of floats, to scale in X and Y respectively
         self.scale = scale
+        logger.debug(f"Scale is {self.scale}")
 
         # List of floats, to scale in X and Y respectively
         logger.debug(f"Scale_cdelt is {scale_cdelt}")
@@ -225,6 +226,36 @@ class zernikeBeam():
         logger.info(f"Using dish diameter of ({self.dish_dia[0]}m, {self.dish_dia[1]}m) for telescope {self.telescope}.")
 
 
+
+    def set_eta_values(self) -> None:
+        """
+        Set the eta scaling values for the aperture at the selected frequency.
+
+        It can be a single value (for a circular aperture), a separate value for
+        each dimension (like for an offset Gregorian), or none.
+
+        If the `--scale` option is passed in on the command line, over-ride all
+        pre-existing eta values.
+        """
+
+        # Set eta values
+        if all(self.scale):
+            self.eta = deepcopy(self.scale)
+        else:
+            if 'eta' in self.df.columns:
+                eta = self.df['eta'].unique()[0]
+                self.eta = [eta, eta]
+                logger.info(f"Using eta value of {self.eta}.")
+            elif 'etax' in self.df.columns and 'etay' in self.df.columns:
+                self.eta = [self.df['etax'].unique()[0], self.df['etay'].unique()[0]]
+                logger.info(f"Using eta value of {self.eta}.")
+            else:
+                logger.info("Eta column(s) do not exist in the input CSV file, not "
+                            "applying frequency dependent scaling.")
+                self.eta = [1.0, 1.0]
+
+
+
     def get_npix_aperture(self, templateim: str) -> Union[int, float]:
         """
         Calculate the number of pixels across the aperture from the template
@@ -272,26 +303,11 @@ class zernikeBeam():
         logger.debug(f"self.ft_cdelt_os {self.ft_cdelt_os}")
         logger.debug(f"self.oversamp {self.oversamp}")
 
-        # Lambda scaling - accounts for changes in effective illumination across the band
-        try:
-            self.eta = self.df['eta'].unique()[0]
-            logger.info(f"Using eta value of {self.eta}.")
-        except KeyError:
-            logger.info("Eta column does not exist in the input CSV file, not "
-                        "applying frequency dependent scaling.")
-            self.eta = 1.0
-
-        # For MeerKAT (and maybe other offset Gregorians)
-        # The dish is elliptical, and the ratio of the major to minor axis changes from SPW to SPW
-        # If this column is present, use it to generate an aperture of the right shape
-        try:
-            self.xyratio = self.df['xyratio'].unique()[0]
-            self.xyratio = 1.
-            logger.info(f"Using xyratio of {self.xyratio}.")
-        except KeyError:
-            logger.info("xyratio column does not exist in the input CSV file, not "
-                        "applying frequency dependent 2D aperture scaling.")
-            self.xyratio = 1.
+        # Figure out the eta values (if any) from the input CSV
+        # It can be a single value (like for VLA)
+        # Or an (etax, etay) tuple (like for MeerKAT)
+        # or non-existent.
+        self.set_eta_values()
 
         if all(self.scale_cdelt):
             self.ft_cdelt[0] *= self.scale_cdelt[0]
@@ -301,7 +317,7 @@ class zernikeBeam():
             self.ft_cdelt_os[1] *= self.scale_cdelt[1]
 
         # Number of pixels across the aperture
-        npix = [dia*self.eta/lambd for dia in self.dish_dia]
+        npix = [int(np.round(dia*eta/lambd)) for dia, eta in zip(self.dish_dia, self.eta)]
         self.ft_npix = [int(np.floor(nn/ft_cdelt)) for nn, ft_cdelt in zip(npix, self.ft_cdelt)]
         self.ft_npix_os = [int(np.floor(nn/ft_cdelt_os)) for nn, ft_cdelt_os in zip(npix, self.ft_cdelt_os)]
 
@@ -311,11 +327,11 @@ class zernikeBeam():
         #self.ft_npix = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix]
 
         # Scale it by this amount
-        if all(self.scale):
-            self.ft_npix_os[0] *= self.scale[0]
-            self.ft_npix_os[1] *= self.scale[1]
+        #if all(self.scale):
+        #    self.ft_npix_os[0] *= self.scale[0]
+        #    self.ft_npix_os[1] *= self.scale[1]
 
-            self.ft_npix_os = [int(np.round(nn)) for nn in self.ft_npix_os]
+        #    self.ft_npix_os = [int(np.round(nn)) for nn in self.ft_npix_os]
 
         logger.debug(f"Scale is {self.scale}")
         logger.debug(f"npix is {npix}")
@@ -526,31 +542,10 @@ class zernikeBeam():
         beamnames       List of filenames for Jones beams, list of str
         """
 
-        # If XYratio != 1, aperture is not circular
-        #if self.xyratio != 1:
-        #    xnpix = int(np.round(self.ft_npix_os * self.xyratio))
-        #    #x = np.linspace(-1, 1, xnpix)
-        #    x = np.arange(-1, 1, self.ft_cdelt_os/xnpix)
-        #else:
-        #    #x = np.linspace(-1, 1, self.npix)
-        #    x = np.arange(-1, 1, self.ft_cdelt_os/self.ft_npix_os)
-
-        #y = np.linspace(-1, 1, self.npix)
-
-        #self.ft_cdelt_os[0] *= self.xyratio
-
         stepsize = [(os/npix) for os, npix in zip(self.ft_cdelt_os, self.ft_npix_os)]
 
         #logger.debug(f"Stepsize is {stepsize}")
         logger.debug(f"ft_cdelt_os {self.ft_cdelt_os}")
-
-        # Force X & Y to be the same size
-        #x = np.arange(-1 + stepsize[0], 1 + stepsize[0], stepsize[0])
-        #y = np.arange(-1 + stepsize[1], 1 + stepsize[1], stepsize[1])
-        #y = np.arange(-1, 1, self.ft_cdelt_os[1]/self.ft_npix_os)
-
-        #x = np.linspace(-1, 1, self.ft_npix_os[0])
-        #y = np.linspace(-1, 1, self.ft_npix_os[1])
 
         if self.ft_npix_os[0] % 2 == 0:
             x = np.linspace(-1, 1, self.ft_npix_os[0]+1)
@@ -589,7 +584,6 @@ class zernikeBeam():
             zaperture[maskidx] = 0
 
             # Python has the array flipped relative to what CASA wants
-            #zaperture = np.flipud(np.fliplr(zaperture))
             zaperture = np.fliplr(zaperture)
 
             ft_csys_os = deepcopy(self.ftcoords)
@@ -623,9 +617,6 @@ class zernikeBeam():
             ia.close()
 
             paddat = self.pad_image(dat)
-
-            #wipe_file(pp)
-            #shutil.copytree(jj, pp)
 
             ia.fromarray(pp, paddat, linear=True)
             ia.close()
