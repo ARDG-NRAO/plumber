@@ -769,7 +769,7 @@ class zernikeBeam():
         return stokesnames
 
 
-    def _do_regrid(self, inname: str, templatecoord: dict, outcsys: dict) -> None:
+    def _do_regrid_to_template(self, inname: str, templatecoord: dict, outcsys: dict) -> None:
         """
         Actually perform the regrid. Abstracted into it's own function for
         multi-processing purposes.
@@ -790,6 +790,8 @@ class zernikeBeam():
         ia.close()
 
         # Check if input is complex to speedup imregrid
+        # Splitting into real and imag can be up to a 100X speedup within
+        # imregrid
         is_complex = np.iscomplexobj(dat)
 
         if is_complex:
@@ -842,33 +844,15 @@ class zernikeBeam():
         None
         """
 
-        #ia.open(templateim)
-        #templatecsys = ia.coordsys().torecord()
-        #ia.close()
-
         ia.open(stokes_beams[0])
         outcsys = ia.coordsys().torecord()
-        #dat = ia.getchunk()
-        #shape = ia.shape()
         ia.close()
-
-        ##imextent = 1./(self.ft_cdelt_os)
-        #imextent = 1./(self.ft_cdelt_os[0]*self.lambd)
-        #imcdelt = (imextent/shape[0])
 
         templatecoord = imregrid(templateim)
         # We are only generating one stokes plane at a time, so force stokes planes = 1
         templatecoord['shap'][-1] = 1
 
-        #crpix = np.unravel_index(np.argmax(dat), shape)
-        #outcsys = deepcopy(templatecsys)
-        #outcsys['direction0']['crpix'] = np.asarray(crpix).astype(int)
-        #outcsys['direction0']['cdelt'] = [-imcdelt, imcdelt]
-        #outcsys['direction0']['units'] = ['rad', 'rad']
-        #outcsys['direction0']['latpole'] = templatecoord['csys']['direction0']['latpole']
-        #outcsys['direction0']['longpole'] = templatecoord['csys']['direction0']['longpole']
-
-        _do_regrid_partial = partial(self._do_regrid, templatecoord=templatecoord, outcsys=outcsys)
+        _do_regrid_partial = partial(self._do_regrid_to_template, templatecoord=templatecoord, outcsys=outcsys)
 
         if self.parallel and not self.do_stokesi_only:
             pool = multiprocessing.Pool(NCPU)
@@ -878,8 +862,80 @@ class zernikeBeam():
                 if self.do_stokesi_only and iss > 0:
                         break
 
-                self._do_regrid(ss, templatecoord, outcsys)
+                _do_regrid_partial(ss)
 
+
+    def _do_regrid_pointing_offset(self, inname: str, templatecoord: dict, offset : list[float]) -> None:
+        """
+        Actually perform the regrid for the pointing offset. Abstracted into
+        it's own function for multi-processing purposes.
+
+        Inputs:
+        inname              Name of the input image, string
+        templatecoord       Template coordinate system, dict returned from imregrid(). This
+                            must have the reference pixel as the centre of the image.
+        offset              The value of the offset to correct for, in pixels. list of float
+
+        Returns:
+        None
+        """
+
+        outname = f'tmp_{inname}.im'
+        outname = make_unique(outname)
+        wipe_file(outname)
+
+        # Move the crpix to the offset so that it gets regridded back to the centre
+        ia.open(inname)
+        csys = ia.coordsys().torecord()
+        crpix = csys['direction0']['crpix']
+        csys['direction0']['crpix'] = [crpix[0] + offset[0], crpix[1] + offset[1]]
+        ia.setcoordsys(csys)
+        ia.close()
+
+        imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+
+        shutil.rmtree(inname)
+        shutil.move(outname, inname)
+
+
+    def fix_pointing_offset(self, stokes_beams : list[str]) -> None:
+        """
+
+        The Stokes I beam can be produced with a few pixel offset from the
+        centre of the image. Force it such that the peak is centred at the
+        central pixel of the image. The other Stokes images will be regridded by
+        an identical amount.
+
+        Inputs:
+        stokes_beams    List of names of the Stokes beam models, list of str
+
+        Returns:
+        None
+        """
+
+        csys_template = imregrid(stokes_beams[0])
+        shape = csys_template['shap']
+        cx, cy = csys_template['csys']['direction0']['crpix']
+
+        ia.open(stokes_beams[0])
+        dat = ia.getchunk()
+        ia.close()
+
+        maxpos = np.unravel_index(np.argmax(dat), dat.shape)
+
+        offset = [maxpos[0] - cx, maxpos[1] - cy]
+
+        _do_regrid_partial = partial(self._do_regrid_pointing_offset, templatecoord=csys_template, offset=offset)
+
+        if self.parallel and not self.do_stokesi_only:
+            pool = multiprocessing.Pool(NCPU)
+            pool.map(_do_regrid_partial, stokes_beams)
+        else:
+            for iss, ss in enumerate(stokes_beams):
+                if self.do_stokesi_only and iss > 0:
+                        break
+
+                _do_regrid_partial(ss)
 
 
     def rotate_image(self, indat: np.ndarray, parang: float) -> np.ndarray:
