@@ -97,13 +97,12 @@ class zernikeBeam():
 
         self.lambd = 0
         self.scale = [None, None]
-        self.scale_cdelt = [None, None]
         self.eta = [None, None]
 
         self.oversamp = 20
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None, scale_cdelt=None):
+    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -140,11 +139,6 @@ class zernikeBeam():
         # List of floats, to scale in X and Y respectively
         self.scale = scale
         logger.debug(f"Scale is {self.scale}")
-
-        # List of floats, to scale in X and Y respectively
-        logger.debug(f"Scale_cdelt is {scale_cdelt}")
-        self.scale_cdelt = scale_cdelt
-        logger.debug(f"self.scale_cdelt is {self.scale_cdelt}")
 
         # Creates ftcoords and sets ft_cdelt and ft_cdelt_os
         # Sets ft_npix and ft_npix_os
@@ -309,18 +303,10 @@ class zernikeBeam():
         # or non-existent.
         self.set_eta_values()
 
-        if all(self.scale_cdelt):
-            self.ft_cdelt[0] *= self.scale_cdelt[0]
-            self.ft_cdelt[1] *= self.scale_cdelt[1]
-
-            self.ft_cdelt_os[0] *= self.scale_cdelt[0]
-            self.ft_cdelt_os[1] *= self.scale_cdelt[1]
-
         # Number of pixels across the aperture
         npix = [int(np.round(dia*eta/lambd)) for dia, eta in zip(self.dish_dia, self.eta)]
         self.ft_npix = [int(np.floor(nn/ft_cdelt)) for nn, ft_cdelt in zip(npix, self.ft_cdelt)]
         self.ft_npix_os = [int(np.floor(nn/ft_cdelt_os)) for nn, ft_cdelt_os in zip(npix, self.ft_cdelt_os)]
-
 
         # So aperture is centred on a single pixel, to avoid offsets in the image
         #self.ft_npix_os = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix_os]

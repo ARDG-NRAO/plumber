@@ -35,8 +35,7 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
 @click.option('--scale', nargs=2, type=float, help='X and Y scaling factors for number of pixels', default=[None, None], show_default=True)
-@click.option('--scale-cdelt', nargs=2, type=float, help='X and Y scaling factors for cdelt', default=[None, None], show_default=True)
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale, scale_cdelt):
+def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -68,19 +67,22 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
     logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
-    logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
+    #logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
 
     zb = zernikeBeam()
 
     for zdf in zdflist:
         zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
-                            islinear=islinear, stokesi=stokesi, parang=parang, parang_file=parang_file, parallel=parallel,
-                            scale=scale, scale_cdelt=scale_cdelt)
+                            islinear=islinear, stokesi=stokesi, parang=parang,
+                            parang_file=parang_file, parallel=parallel,
+                            scale=scale)
 
         jones_beams = zb.gen_jones_beams()
         stokes_beams = zb.jones_to_mueller(jones_beams)
 
         zb.regrid_to_template(stokes_beams, imagename)
+        # Regrid so Stokes I peak is at the centre of the image
+        zb.fix_pointing_offset(stokes_beams)
 
     #if parang is not None:
         #stokes_beams = zb.rotate_beam(stokes_beams, parang)
