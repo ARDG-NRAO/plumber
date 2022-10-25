@@ -487,12 +487,7 @@ class zernikeBeam():
         else:
             slicey = slice(pcy-cy, pcy+cy)
 
-        #slicex = slice(pcx-cx, pcx+cx)
-        #slicey = slice(pcy-cy, pcy+cy)
 
-        #if shape[0] % 2:
-        #    paddat[pcx-cx:pcx+cx+1, pcy-cy:pcy+cy+1] = inpdat
-        #else:
         paddat[slicex, slicey] = inpdat
 
         if self.parang != 0:
@@ -530,7 +525,6 @@ class zernikeBeam():
 
         stepsize = [(os/npix) for os, npix in zip(self.ft_cdelt_os, self.ft_npix_os)]
 
-        #logger.debug(f"Stepsize is {stepsize}")
         logger.debug(f"ft_cdelt_os {self.ft_cdelt_os}")
 
         if self.ft_npix_os[0] % 2 == 0:
@@ -714,13 +708,6 @@ class zernikeBeam():
                     'real(-IM0*CONJ(IM2) - IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1))',
                     'real(1i*(IM0*CONJ(IM2) + IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1)))'
                 ]
-                #Sdag_M_S = [
-                #    'IM0',
-                #    'IM1',
-                #    'IM2',
-                #    'IM3'
-                #    ]
-
             else: # This works for ALMA
                 Sdag_M_S = [
                     'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
