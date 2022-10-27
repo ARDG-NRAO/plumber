@@ -5,8 +5,6 @@ Module to hold all the function that deal with the Zernike generation or CSV
 parsing
 """
 
-from __future__ import annotations
-
 import shutil
 import pandas as pd
 import numpy as np
@@ -15,27 +13,21 @@ from scipy.ndimage import rotate
 import astropy.units as u
 
 from copy import deepcopy
-from typing import Union
 
 import multiprocessing
 from functools import partial, wraps
 
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel('INFO')
 
-from plumber.misc import wipe_file, make_unique
-from plumber.image import parse_image
+from plumber.misc import wipe_file
 
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
 
-# Use up to 4 concunrrent processes
-NCPU = min(multiprocessing.cpu_count(), 4)
 
-
-def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
+def get_zcoeffs(csv, imfreq):
     """
     Given the input frequency of the image, returns the Pandas dataframe with
     the coefficients corresponding to the input frequency. The frequencies in
@@ -82,27 +74,12 @@ class zernikeBeam():
     def __init__(self):
         self.freq = None
         self.padfac = None
-        self.dish_dia = []
+        self.dish_dia = None
         self.islinear = None
         self.parallel = False
-        self.telescope = None
-
-        # Everything with ft_ is in aperture domain
-        self.ft_cdelt = [None, None]
-        self.ft_cdelt_os  = [None, None]
-        self.ftcoords = None
-
-        self.ft_npix = 0
-        self.ft_npix_os = 0
-
-        self.lambd = 0
-        self.scale = [None, None]
-        self.eta = [None, None]
-
-        self.oversamp = 20
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
+    def initialize(self, df, templateim, padfac=8, dish_dia=None, islinear=None, stokesi=False, parang=None, parallel=False):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -119,54 +96,24 @@ class zernikeBeam():
         """
 
         self.df = df
-        self.telescope = self.get_telescope(templateim)
-        self.eta = [1., 1.]
 
         self.dish_dia = dish_dia
-        self.get_dish_diameter()
+        self.get_dish_diameter(templateim)
         self.islinear = islinear
         self.get_feed_basis()
+
+        self.npix, self.cdelt_aperture = self.get_npix_aperture(templateim)
 
         self.padfac = int(padfac)
         self.parallel = parallel
         self.parang = parang
-        self.parang_file = parang_file
 
         # In MHz
         self.freq = df['freq'].unique()[0]
         self.do_stokesi_only = stokesi
 
-        # List of floats, to scale in X and Y respectively
-        self.scale = scale
-        logger.debug(f"Scale is {self.scale}")
 
-        # Creates ftcoords and sets ft_cdelt and ft_cdelt_os
-        # Sets ft_npix and ft_npix_os
-        self.get_npix_aperture(templateim)
-
-
-    def get_telescope(self, templateim: str) -> str:
-        """
-        Get the telescope name from the image header
-
-        Input:
-        templateim      Name of the input template image, string
-
-        Returns:
-        telescope       Name of the input telescope
-        """
-
-        ia.open(templateim)
-        csys = ia.coordsys().torecord()
-        ia.close()
-
-        telescope = csys['telescope']
-        logger.debug(f"Telescope is {telescope}.")
-
-        return csys['telescope']
-
-
-    def get_feed_basis(self) -> None:
+    def get_feed_basis(self):
         """
         Get the feed basis, from the telescope name.
         """
@@ -186,14 +133,18 @@ class zernikeBeam():
         elif "gmrt" in self.telescope.lower() and self.freq >= 9e2:
             self.islinear = True
         else:
-            raise ValueError("Unable to determine feed basis, unknown telescope. "
+            raise ValueError("Unable to determine feed bsis, unknown telescope. "
             "Please pass in the feed basis via the islinear paramter to "
             ".initialize()")
 
 
-    def get_dish_diameter(self) -> None:
+
+    def get_dish_diameter(self, templateim):
         """
         Get the dish diameter for different instruments.
+
+        Input:
+        templateim      Name of the input template image, string
 
         Returns:
         None, sets self.dish_dia in place
@@ -204,143 +155,96 @@ class zernikeBeam():
                         "diameter. Using the input of {self.dish_dia} m")
             return
 
+        ia.open(templateim)
+        csys = ia.coordsys().torecord()
+        ia.close()
+
+        self.telescope = csys['telescope']
+
         if 'vla' in self.telescope.lower():
-            self.dish_dia = [25, 25]
+            self.dish_dia = 25
         elif 'meerkat' in self.telescope.lower():
-            #self.dish_dia = 13.5
-            self.dish_dia = [13.5, 13.5]
+            self.dish_dia = 13.5
         elif 'alma' in self.telescope.lower():
-            self.dish_dia = [12, 12]
+            self.dish_dia = 12
         elif 'gmrt' in self.telescope.lower():
-            self.dish_dia = [45, 45]
+            self.dish_dia = 45
         else:
             raise ValueError('Unknown telescope type. Please initialize the '
                              'class with the dish_diameter value in metres.')
 
-        logger.info(f"Using dish diameter of ({self.dish_dia[0]}m, {self.dish_dia[1]}m) for telescope {self.telescope}.")
 
-
-
-    def set_eta_values(self) -> None:
-        """
-        Set the eta scaling values for the aperture at the selected frequency.
-
-        It can be a single value (for a circular aperture), a separate value for
-        each dimension (like for an offset Gregorian), or none.
-
-        If the `--scale` option is passed in on the command line, over-ride all
-        pre-existing eta values.
-        """
-
-        # Set eta values
-        if all(self.scale):
-            self.eta = deepcopy(self.scale)
-        else:
-            if 'eta' in self.df.columns:
-                eta = self.df['eta'].unique()[0]
-                self.eta = [eta, eta]
-                logger.info(f"Using eta value of {self.eta}.")
-            elif 'etax' in self.df.columns and 'etay' in self.df.columns:
-                self.eta = [self.df['etax'].unique()[0], self.df['etay'].unique()[0]]
-                logger.info(f"Using eta value of {self.eta}.")
-            else:
-                logger.info("Eta column(s) do not exist in the input CSV file, not "
-                            "applying frequency dependent scaling.")
-                self.eta = [1.0, 1.0]
-
-
-
-    def get_npix_aperture(self, templateim: str) -> Union[int, float]:
+    def get_npix_aperture(self, templateim):
         """
         Calculate the number of pixels across the aperture from the template
         image.
-
-        Inputs:
-        templateim      Name of the input template image, str
-
-        Returns:
-        npix            The number of pixels across the aperture, int
-        cdelt           The pixel delta in lambda, float
         """
-
-        imsize, imfreq, is_stokes_cube = parse_image(templateim)
-        freq = imfreq[0].value
 
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
-        self.template_csys = deepcopy(template_csys)
         ia.close()
 
+        #try:
+        #    unit = template_csys['spectral2']['unit']
+        #except KeyError:
+        #    unit = template_csys['spectral1']['unit']
+
+        #if unit.lower() == 'hz':
+        #    fac = 1
+        #elif unit.lower() == 'mhz':
+        #    fac = 1e-6
+        #elif unit.lower() == 'ghz':
+        #    fac = 1e-9
+        #else:
+        #    raise ValueError("Unknown unit in image.")
+
+        try:
+            freq = template_csys['spectral2']['wcs']['crval']
+        except KeyError:
+            freq = template_csys['spectral1']['wcs']['crval']
+
         lambd = 299792458/freq
-        self.lambd = lambd
 
-        logger.debug(f"lambda {self.lambd}")
-        logger.debug(f"freq {self.freq}")
-
-        outname = make_unique('fft.im')
+        outname = 'fft.im'
         wipe_file(outname)
-
         ia.open(templateim)
         ia.fft(complex=outname)
         ia.close()
 
         ia.open(outname)
         csys = ia.coordsys().torecord()
-        cdelt = deepcopy(csys['linear0']['cdelt'])
+        cdelt = csys['linear0']['cdelt']
         cdelt = np.abs(cdelt[0])
 
-        self.ftcoords = csys
-        self.ft_cdelt = [cdelt, cdelt]
-        self.ft_cdelt_os = [cdelt/self.oversamp, cdelt/self.oversamp]
-
-        logger.debug(f"self.ft_cdelt {self.ft_cdelt}")
-        logger.debug(f"self.ft_cdelt_os {self.ft_cdelt_os}")
-        logger.debug(f"self.oversamp {self.oversamp}")
-
-        # Figure out the eta values (if any) from the input CSV
-        # It can be a single value (like for VLA)
-        # Or an (etax, etay) tuple (like for MeerKAT)
-        # or non-existent.
-        self.set_eta_values()
+        # Lambda scaling - accounts for changes in effective illumination across the band
+        try:
+            eta = self.df['eta'].unique()[0]
+        except KeyError:
+            logger.info("Eta column does not exist in the input CSV file, not "
+                        "applying frequency dependent scaling.")
+            eta = 1.
 
         # Number of pixels across the aperture
-        npix = [int(np.round(dia*eta/lambd)) for dia, eta in zip(self.dish_dia, self.eta)]
-        self.ft_npix = [int(np.floor(nn/ft_cdelt)) for nn, ft_cdelt in zip(npix, self.ft_cdelt)]
-        self.ft_npix_os = [int(np.floor(nn/ft_cdelt_os)) for nn, ft_cdelt_os in zip(npix, self.ft_cdelt_os)]
+        npix = self.dish_dia*eta/lambd
+        npix = int(np.ceil(npix/cdelt))
+
+        if npix < 10:
+            npix *= 2
+            cdelt /= 2.
 
         # So aperture is centred on a single pixel, to avoid offsets in the image
-        #self.ft_npix_os = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix_os]
-        #self.ft_npix = [nn + 1 if nn % 2 == 0 else nn for nn in self.ft_npix]
-
-        # Scale it by this amount
-        #if all(self.scale):
-        #    self.ft_npix_os[0] *= self.scale[0]
-        #    self.ft_npix_os[1] *= self.scale[1]
-
-        #    self.ft_npix_os = [int(np.round(nn)) for nn in self.ft_npix_os]
-
-        logger.debug(f"Scale is {self.scale}")
-        logger.debug(f"npix is {npix}")
-        logger.debug(f"self.ft_npix {self.ft_npix}")
-        logger.debug(f"self.ft_npix_os {self.ft_npix_os}")
-        logger.debug(f"self.ft_cdelt {self.ft_cdelt}")
-        logger.debug(f"self.ft_cdelt_os {self.ft_cdelt_os}")
+        if npix % 2 == 0:
+            npix += 1
 
         wipe_file(outname)
 
+        return int(npix), cdelt
 
 
-    def powl(self, base: float, exp: float) -> float:
+
+    def powl(self, base, exp):
         """
-        Raise base to an exponent quickly.
         Algorithm taken from https://stackoverflow.com/questions/2198138/calculating-powers-e-g-211-quickly
-
-        Inputs:
-        base        Input base, float
-        exp         Exponent to raise to, float
-
-        Returns:
-        base^exp    Base raised to the exponent, float
         """
         if exp == 0:
             return 1
@@ -352,18 +256,10 @@ class zernikeBeam():
             return self.powl(base * base, exp // 2)
 
 
-    def gen_zernike_surface(self, coeffs: np.ndarray, x: np.ndarray, y:np.ndarray) -> np.ndarray:
+    def gen_zernike_surface(self, coeffs, x, y):
 
         '''
         Use polynomial approximations to generate Zernike surface
-
-        Inputs:
-        coeffs      List of coefficients, np.ndarray
-        x           2D array of X coordinates, from np.meshgrid
-        y           2D array of Y coordinates, from np.meshgrid
-
-        Returns:
-        ZW          The Zernike surface, np.ndarray
         '''
 
         #Setting coefficients array
@@ -448,20 +344,12 @@ class zernikeBeam():
         return ZW
 
 
-    def pad_image(self, inpdat: np.ndarray) -> np.ndarray:
+    def pad_image(self, inpdat):
         """
         Pad the input image by self.padfac and return the numpy array
-
-        Inputs:
-        inpdat      Input image data, 2D array
-
-        Returns:
-        paddat      Padded image data, 2D array
         """
 
         shape = inpdat.shape
-        logger.debug(f"Aperture shape {shape}")
-
         try:
             padshape = [shape[0]*self.padfac, shape[1]*self.padfac, shape[2], shape[3]]
         except IndexError:
@@ -470,49 +358,44 @@ class zernikeBeam():
             except IndexError:
                 padshape = [shape[0]*self.padfac, shape[1]*self.padfac, 1, 1]
 
-        logger.debug(f"Padded aperture shape {shape}")
-
         paddat = np.zeros(padshape, dtype=complex)
 
         cx, cy = shape[0]//2, shape[1]//2
         pcx, pcy = padshape[0]//2, padshape[1]//2
 
         if shape[0] % 2:
-            slicex = slice(pcx-cx, pcx+cx+1)
+            paddat[pcx-cx:pcx+cx+1, pcy-cy:pcy+cy+1] = inpdat
         else:
-            slicex = slice(pcx-cx, pcx+cx)
+            paddat[pcx-cx:pcx+cx, pcy-cy:pcy+cy] = inpdat
 
-        if shape[1] % 2:
-            slicey = slice(pcy-cy, pcy+cy+1)
-        else:
-            slicey = slice(pcy-cy, pcy+cy)
+        if len(self.parang) > 0:
+            if len(self.parang) == 1:
+                logger.info(f"Rotating to parallactic angle {self.parang}")
+                parang = self.parang[0]
+                paddat_r = rotate(paddat.real, angle=parang, reshape=False)
+                paddat_i = rotate(paddat.imag, angle=parang, reshape=False)
+            elif len(self.parang) == 2:
+                logger.info(f"Averaging over parallactic angle {self.parang} in steps of 5 deg")
+                paddat_r= 0
+                paddat_i= 0
+                npa = 0
+                # Average over PA
+                for pp in np.linspace(self.parang[0], self.parang[1], 5):
+                    paddat_r += rotate(paddat.real, angle=pp, reshape=False)
+                    paddat_i += rotate(paddat.imag, angle=pp, reshape=False)
+                    npa += 1
 
+                paddat_r /= npa
+                paddat_i /= npa
+            else:
+                raise ValueError(f"Either input a single value or two values for the parallactic angle. Currently set to {self.pa}")
 
-        paddat[slicex, slicey] = inpdat
-
-        if self.parang != 0:
-            logger.info(f"Rotating to parallactic angle {self.parang}")
-            paddat = self.rotate_image(paddat, self.parang)
-
-        if self.parang_file is not None:
-            logger.info(f"Calculating weighted parang average from {self.parang_file}")
-
-            pfile_dat = np.loadtxt(self.parang_file)
-            parangs = pfile_dat.T[0]
-            weights = pfile_dat.T[1]
-
-            paddat_wavg = np.zeros_like(paddat)
-            for pp, ww in zip(parangs, weights):
-                rotdat = self.rotate_image(paddat, pp)
-                paddat_wavg += rotdat * ww
-            paddat_wavg /= np.sum(ww)
-
-            paddat = paddat_wavg
+            paddat = paddat_r + 1j*paddat_i
 
         return paddat
 
 
-    def gen_jones_beams(self) -> list[str]:
+    def gen_jones_beams(self):
         """
         Generate the Jones beams from the aperture coefficients.
 
@@ -522,36 +405,15 @@ class zernikeBeam():
         Returns:
         beamnames       List of filenames for Jones beams, list of str
         """
-
-        stepsize = [(os/npix) for os, npix in zip(self.ft_cdelt_os, self.ft_npix_os)]
-
-        logger.debug(f"ft_cdelt_os {self.ft_cdelt_os}")
-
-        if self.ft_npix_os[0] % 2 == 0:
-            x = np.linspace(-1, 1, self.ft_npix_os[0]+1)
-        else:
-            x = np.linspace(-1, 1, self.ft_npix_os[0])
-
-        if self.ft_npix_os[1] % 2 == 0:
-            y = np.linspace(-1, 1, self.ft_npix_os[1]+1)
-        else:
-            y = np.linspace(-1, 1, self.ft_npix_os[1])
-
-        logger.debug(f"number of pixels in X (oversamp) {x.size}")
-        logger.debug(f"number of pixels in Y (oversamp) {y.size}")
+        x = np.linspace(-1, 1, self.npix)
+        y = np.linspace(-1, 1, self.npix)
 
         xx, yy = np.meshgrid(x, y)
         maskidx = np.where(np.sqrt(xx**2 + yy**2) > 1)
 
-        # Oversampled aperture
-        jonesnames_os = ['J00_ap_os.im', 'J01_ap_os.im', 'J10_ap_os.im', 'J11_ap_os.im']
         jonesnames = ['J00_ap.im', 'J01_ap.im', 'J10_ap.im', 'J11_ap.im']
 
-        [wipe_file(jj) for jj in jonesnames_os]
         [wipe_file(jj) for jj in jonesnames]
-
-        jonesnames_os = [make_unique(jj) for jj in jonesnames_os]
-        jonesnames = [make_unique(jj) for jj in jonesnames]
 
         stokes = self.df['#stokes'].unique()
         for idx, ss in enumerate(stokes):
@@ -566,32 +428,15 @@ class zernikeBeam():
             # Python has the array flipped relative to what CASA wants
             zaperture = np.fliplr(zaperture)
 
-            ft_csys_os = deepcopy(self.ftcoords)
-            ft_csys_os['linear0']['cdelt'] = self.ft_cdelt_os
-            ft_csys_os['linear0']['crpix'] = [xx.shape[0]//2, xx.shape[1]//2]
-            # The ref pixel is the input imsize//2 (ex: 4096,4096) but our
-            # aperture does not span that many pixels, so adjust
-            self.ftcoords['linear0']['crpix'] = [xx.shape[0]//2, xx.shape[1]//2]
-
-            ia.fromarray(jonesnames_os[idx], zaperture[:,:,None,None], linear=True, csys=ft_csys_os)
+            ia.fromarray(jonesnames[idx], zaperture[:,:,None,None], linear=True)
             ia.close()
-
-            #imregrid_coords = imregrid(jonesnames_os[idx])
-            #imregrid_coords['csys'] = self.ftcoords
-
-            ## Resample to original UV coords
-            #imregrid(jonesnames_os[idx], output=jonesnames[idx], template=imregrid_coords)
 
         padjonesnames = ['pad_J00_ap.im', 'pad_J01_ap.im', 'pad_J10_ap.im', 'pad_J11_ap.im']
         beamnames = ['J00.im', 'J01.im', 'J10.im', 'J11.im']
-
         [wipe_file(jj) for jj in padjonesnames]
         [wipe_file(jj) for jj in beamnames]
 
-        padjonesnames = [make_unique(jj) for jj in padjonesnames]
-        beamnames = [make_unique(jj) for jj in beamnames]
-
-        for jj, pp, bb in zip(jonesnames_os, padjonesnames, beamnames):
+        for jj, pp, bb in zip(jonesnames, padjonesnames, beamnames):
             ia.open(jj)
             dat = ia.getchunk()
             ia.close()
@@ -603,85 +448,25 @@ class zernikeBeam():
 
             ia.open(pp)
             csys = ia.coordsys().torecord()
-            padcdelt = self.ft_cdelt[0]/self.padfac
+            padcdelt = self.cdelt_aperture/self.padfac
             csys['linear0']['cdelt'] = [padcdelt, padcdelt, 1, 1]
             csys['linear0']['units'] = ['lambda', 'lambda', 'Hz', '']
             csys['telescope'] = self.telescope
             ia.setcoordsys(csys)
-            ia.putchunk(paddat)
             ia.close()
+
 
             ia.open(pp)
             ia.fft(complex=bb, axes=[0,1])
             ia.close()
 
-            self.fix_jones_header(bb)
-
         [wipe_file(jj) for jj in jonesnames]
-        [wipe_file(jj) for jj in jonesnames_os]
         [wipe_file(jj) for jj in padjonesnames]
 
         return beamnames
 
 
-    def fix_jones_header(self, beamname : str) -> None:
-        """
-        Fix the header of the Jones beams generated from the apertures.
-
-        The `ia.fft` function preserves the header information when performing a
-        reverse transformation, however it does not correctly assign the RA and
-        DEC axes, but rather sets them to be `1./linear` which imregrid does not
-        handle correctly.
-
-        The header is fixed in-place.
-
-        Inputs:
-        beamname    Name of the Jones beam, str
-
-        Returns:
-        None
-        """
-
-        ia.open(beamname)
-        csys = ia.coordsys().torecord()
-        beamdat = ia.getchunk()
-        ia.close()
-
-        wipe_file(beamname)
-
-        ia.fromarray(beamname, beamdat)
-        ia.close()
-
-        ia.open(beamname)
-        shape = ia.shape()
-        beamcsys = ia.coordsys().torecord()
-
-        beamcsys['direction0']['cdelt'][:2] = 2.0 * csys['linear0']['cdelt'][:2]
-        beamcsys['direction0']['crval'] = self.template_csys['direction0']['crval']
-        beamcsys['direction0']['latpole'] = self.template_csys['direction0']['latpole']
-        beamcsys['direction0']['longpole'] = self.template_csys['direction0']['longpole']
-        beamcsys['direction0']['units'] = ['rad', 'rad']
-
-        # Make sure the Stokes and Spectral axes are ordered in the same way
-        if 'spectral1' in self.template_csys:
-            beamcsys['spectral1'] = self.template_csys['spectral1']
-            beamcsys.pop('spectral2', None)
-        elif 'spectral2' in self.template_csys:
-            beamcsys['spectral2'] = self.template_csys['spectral2']
-            beamcsys.pop('spectral1', None)
-
-        if 'stokes1' in self.template_csys:
-            beamcsys['stokes1'] = self.template_csys['stokes1']
-            beamcsys.pop('stokes2', None)
-        elif 'stokes2' in self.template_csys:
-            beamcsys['stokes2'] = self.template_csys['stokes2']
-            beamcsys.pop('stokes1', None)
-
-        ia.setcoordsys(beamcsys)
-        ia.close()
-
-
-    def jones_to_mueller(self, beamnames: list[str]) -> list[str]:
+    def jones_to_mueller(self, beamnames):
         """
         Convert the input Jones beams to Mueller beams
 
@@ -693,9 +478,9 @@ class zernikeBeam():
         """
 
         stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
-                    f'IQ_{self.telescope}_{self.freq}MHz.im',
-                    f'IU_{self.telescope}_{self.freq}MHz.im',
-                    f'IV_{self.telescope}_{self.freq}MHz.im']
+                       f'IQ_{self.telescope}_{self.freq}MHz.im',
+                       f'IU_{self.telescope}_{self.freq}MHz.im',
+                       f'IV_{self.telescope}_{self.freq}MHz.im']
 
         [wipe_file(ss) for ss in stokesnames]
 
@@ -703,10 +488,10 @@ class zernikeBeam():
             # This is probably true for ASKAP as well
             if 'meerkat' in self.telescope.lower():
                 Sdag_M_S = [
-                    'real(IM0*CONJ(IM0) + IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
-                    'real(-IM0*CONJ(IM0) - IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
-                    'real(-IM0*CONJ(IM2) - IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1))',
-                    'real(1i*(IM0*CONJ(IM2) + IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1)))'
+                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                    'real(-CONJ(IM0)*IM0 + CONJ(IM1)*IM1 - CONJ(IM2)*IM2 + CONJ(IM3)*IM3)/2.',
+                    'real(-CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)/2.',
+                    'real(1i*(-CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))/2.'
                 ]
             else: # This works for ALMA
                 Sdag_M_S = [
@@ -743,82 +528,44 @@ class zernikeBeam():
             dat = ia.getchunk()
             # Normalize so StokesI peaks at 1.0
             dat /= maxv
-            ia.putchunk(dat)
             ia.close()
 
-            # ia.fft() put it into linear coords, dump it back into SkyCoord
-            #shutil.rmtree(ss)
-            #ia.fromarray(ss, dat)
-            #ia.close()
+            # ia.fft() put it into lienar coords, dump it back into SkyCoord
+            shutil.rmtree(ss)
+            ia.fromarray(ss, dat)
+            ia.close()
 
         [wipe_file(ss) for ss in beamnames]
 
         return stokesnames
 
-
-    def _do_regrid_to_template(self, inname: str, templatecoord: dict, outcsys: dict) -> None:
+    def _do_regrid(self, inname, templatecoord, outcsys):
         """
-        Actually perform the regrid. Abstracted into it's own function for
+        Actually perform the regird. Abstracted into it's own function for
         multi-processing purposes.
 
         Inputs:
-        inname              Name of the input image, string
         templatecoord       Template coordinate system, dict returned from imregrid()
-        outcsys             The co-ordinate system to apply to the input image prior to regrid,
-                            dict returned from imregrid()
+        inname              Name of the input image, string
 
         Returns:
         None
         """
 
         ia.open(inname)
-        dat = ia.getchunk()
         ia.setcoordsys(outcsys)
         ia.close()
 
-        # Check if input is complex to speedup imregrid
-        # Splitting into real and imag can be up to a 100X speedup within
-        # imregrid
-        is_complex = np.iscomplexobj(dat)
+        outname = f'tmp_{inname}.im'
+        wipe_file(outname)
 
-        if is_complex:
-            inname_r = make_unique(f'{inname}_real.im')
-            inname_i = make_unique(f'{inname}_imag.im')
-
-            outname_r = make_unique(f'tmp_{inname}_real.im')
-            outname_i = make_unique(f'tmp_{inname}_imag.im')
-
-            wipe_file(outname_r)
-            wipe_file(outname_i)
-
-            immath(inname, outfile=inname_r, expr='REAL(IM0)')
-            immath(inname, outfile=inname_i, expr='IMAG(IM0)')
-
-            imregrid(inname_r, template=templatecoord, output=outname_r, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
-            imregrid(inname_i, template=templatecoord, output=outname_i, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
-
-            outname = f'tmp_{inname}.im'
-            outname = make_unique(outname)
-            wipe_file(outname)
-            immath([outname_r, outname_i], outfile=outname, expr='complex(IM0, IM1)')
-
-            wipe_file(outname_r)
-            wipe_file(outname_i)
-            wipe_file(inname_r)
-            wipe_file(inname_i)
-
-        else:
-            outname = f'tmp_{inname}.im'
-            outname = make_unique(outname)
-            wipe_file(outname)
-
-            imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
+        imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
 
         shutil.rmtree(inname)
         shutil.move(outname, inname)
 
 
-    def regrid_to_template(self, stokes_beams: list[str], templateim: str) -> None:
+    def regrid_to_template(self, stokes_beams, templateim):
         """
         Match co-ordinates between the template image and the PBs, and regrid
         the PBs to lie on the same co-ordinate grid.
@@ -831,118 +578,81 @@ class zernikeBeam():
         None
         """
 
-        ia.open(stokes_beams[0])
-        outcsys = ia.coordsys().torecord()
+        ia.open(templateim)
+        templatecsys = ia.coordsys().torecord()
         ia.close()
+
+        ia.open(stokes_beams[0])
+        dat = ia.getchunk()
+        shape = ia.shape()
+        ia.close()
+
+        imextent = 1./(self.cdelt_aperture)
+        imcdelt = (imextent/shape[0])
 
         templatecoord = imregrid(templateim)
         # We are only generating one stokes plane at a time, so force stokes planes = 1
         templatecoord['shap'][-1] = 1
 
-        _do_regrid_partial = partial(self._do_regrid_to_template, templatecoord=templatecoord, outcsys=outcsys)
+        crpix = np.unravel_index(np.argmax(dat), shape)
+        outcsys = deepcopy(templatecsys)
+        outcsys['direction0']['crpix'] = np.asarray(crpix).astype(int)
+        outcsys['direction0']['cdelt'] = [-imcdelt, imcdelt]
+        outcsys['direction0']['units'] = ['rad', 'rad']
+        outcsys['direction0']['latpole'] = templatecoord['csys']['direction0']['latpole']
+        outcsys['direction0']['longpole'] = templatecoord['csys']['direction0']['longpole']
+
+        _do_regrid_partial = partial(self._do_regrid, templatecoord=templatecoord, outcsys=outcsys)
 
         if self.parallel and not self.do_stokesi_only:
-            pool = multiprocessing.Pool(NCPU)
+            pool = multiprocessing.Pool(4)
             pool.map(_do_regrid_partial, stokes_beams)
         else:
             for iss, ss in enumerate(stokes_beams):
                 if self.do_stokesi_only and iss > 0:
                         break
 
-                _do_regrid_partial(ss)
+                self._do_regrid(ss, templatecoord, outcsys)
 
 
-    def _do_regrid_pointing_offset(self, inname: str, templatecoord: dict, offset : list[float]) -> None:
+    def _do_rotate(self, imname, parang):
         """
-        Actually perform the regrid for the pointing offset. Abstracted into
-        it's own function for multi-processing purposes.
+        Rotate the input image by parang degrees in place.
 
         Inputs:
-        inname              Name of the input image, string
-        templatecoord       Template coordinate system, dict returned from imregrid(). This
-                            must have the reference pixel as the centre of the image.
-        offset              The value of the offset to correct for, in pixels. list of float
-
-        Returns:
-        None
-        """
-
-        outname = f'tmp_{inname}.im'
-        outname = make_unique(outname)
-        wipe_file(outname)
-
-        # Move the crpix to the offset so that it gets regridded back to the centre
-        ia.open(inname)
-        csys = ia.coordsys().torecord()
-        crpix = csys['direction0']['crpix']
-        csys['direction0']['crpix'] = [crpix[0] + offset[0], crpix[1] + offset[1]]
-        ia.setcoordsys(csys)
-        ia.close()
-
-        imregrid(inname, template=templatecoord, output=outname, overwrite=True, axes=[0,1], interpolation='cubic', decimate=10)
-
-        shutil.rmtree(inname)
-        shutil.move(outname, inname)
-
-
-    def fix_pointing_offset(self, stokes_beams : list[str]) -> None:
-        """
-
-        The Stokes I beam can be produced with a few pixel offset from the
-        centre of the image. Force it such that the peak is centred at the
-        central pixel of the image. The other Stokes images will be regridded by
-        an identical amount.
-
-        Inputs:
-        stokes_beams    List of names of the Stokes beam models, list of str
-
-        Returns:
-        None
-        """
-
-        csys_template = imregrid(stokes_beams[0])
-        shape = csys_template['shap']
-        cx, cy = csys_template['csys']['direction0']['crpix']
-
-        ia.open(stokes_beams[0])
-        dat = ia.getchunk()
-        ia.close()
-
-        maxpos = np.unravel_index(np.argmax(dat), dat.shape)
-
-        offset = [maxpos[0] - cx, maxpos[1] - cy]
-
-        _do_regrid_partial = partial(self._do_regrid_pointing_offset, templatecoord=csys_template, offset=offset)
-
-        if self.parallel and not self.do_stokesi_only:
-            pool = multiprocessing.Pool(NCPU)
-            pool.map(_do_regrid_partial, stokes_beams)
-        else:
-            for iss, ss in enumerate(stokes_beams):
-                if self.do_stokesi_only and iss > 0:
-                        break
-
-                _do_regrid_partial(ss)
-
-
-    def rotate_image(self, indat: np.ndarray, parang: float) -> np.ndarray:
-        """
-        Rotate the input data by parang degrees in place.
-
-        Inputs:
-        indat           Input image data, 2D array
+        imname          Input image name, string
         parang          Parallactic angle in deg, float
 
         Returns:
-        rotdat          Rotated image, 2D array
+        None
         """
 
-        if indat.dtype == complex:
-            indat_r = rotate(indat.real, angle=parang, reshape=False)
-            indat_i = rotate(indat.imag, angle=parang, reshape=False)
+        tmpname = 'tmp_' + imname
+        ia.open(imname)
+        ia.rotate(outfile=tmpname, pa=f'{parang}deg')
+        ia.close()
 
-            rotdat = indat_r + 1j*indat_i
+        shutil.move(tmpname, imname)
+
+    def rotate_beam(self, stokes_beams, parang):
+        """
+        Rotate the beam by parang degrees
+
+        Inputs:
+        stokes_beams    Names of the input beams, array of strings
+        parang          Parallactic angle in deg, float
+
+        Returns:
+        stokes_beams    Rotated beams (in place), array of strings
+        """
+
+        if self.parallel and not self.do_stokesi_only:
+            _do_rotate_partial = partian(self._do_rotate, parang=parang)
+            pool = multiprocessing.Pool(4)
+            pool.map(_do_rotate_partial, stokes_beams)
         else:
-            rotdat = rotate(indat, angle=parang, reshape=False)
+            for iss, ss in enumerate(stokes_beams):
+                if self.do_stokesi_only and iss > 0:
+                        break
 
-        return rotdat
+                self._do_rotate(ss, parang)
