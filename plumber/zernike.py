@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel('INFO')
 
 from plumber.misc import wipe_file, make_unique
-from plumber.image import parse_image
+from plumber.image import parse_image, MuellerExpression
 
 from casatasks import immath, imregrid
 from casatools import image
@@ -86,6 +86,7 @@ class zernikeBeam():
         self.islinear = None
         self.parallel = False
         self.telescope = None
+        self.Sdag_M_S = []
 
         # Everything with ft_ is in aperture domain
         self.ft_cdelt = [None, None]
@@ -100,6 +101,7 @@ class zernikeBeam():
         self.eta = [None, None]
 
         self.oversamp = 20
+
 
 
     def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
@@ -692,6 +694,11 @@ class zernikeBeam():
         stokesnames     List of Stokes beam names, list of str
         """
 
+
+        # Load in the default Mueller expressions
+        me = MuellerExpression(self.islinear, self.telescope)
+        self.Sdag_M_S = me.expr
+
         stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
                     f'IQ_{self.telescope}_{self.freq}MHz.im',
                     f'IU_{self.telescope}_{self.freq}MHz.im',
@@ -699,36 +706,12 @@ class zernikeBeam():
 
         [wipe_file(ss) for ss in stokesnames]
 
-        if self.islinear:
-            # This is probably true for ASKAP as well
-            if 'meerkat' in self.telescope.lower():
-                Sdag_M_S = [
-                    'real(IM0*CONJ(IM0) + IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
-                    'real(-IM0*CONJ(IM0) - IM1*CONJ(IM1) + IM2*CONJ(IM2) + IM3*CONJ(IM3))',
-                    'real(-IM0*CONJ(IM2) - IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1))',
-                    'real(1i*(IM0*CONJ(IM2) + IM1*CONJ(IM3) - IM2*CONJ(IM0) - IM3*CONJ(IM1)))'
-                ]
-            else: # This works for ALMA
-                Sdag_M_S = [
-                    'real(CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3)',
-                    'real(CONJ(IM0)*IM0 - CONJ(IM1)*IM1 + CONJ(IM2)*IM2 - CONJ(IM3)*IM3)',
-                    'real(CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2)',
-                    'real(1i*(CONJ(IM0)*IM1 - CONJ(IM1)*IM0 + CONJ(IM2)*IM3 - CONJ(IM3)*IM2))'
-                ]
-        else:
-            Sdag_M_S = [
-                'real( CONJ(IM0)*IM0 + CONJ(IM1)*IM1 + CONJ(IM2)*IM2 + CONJ(IM3)*IM3 )/2.',
-                'real( CONJ(IM0)*IM1 + CONJ(IM1)*IM0 + CONJ(IM2)*IM3 + CONJ(IM3)*IM2 )/2.',
-                'real( 1i*(CONJ(IM0)*IM1 + CONJ(IM2)*IM3) - 1i*(CONJ(IM1)*IM0 + CONJ(IM3)*IM2) )/2.',
-                'real( CONJ(IM0)*IM0 - CONJ(IM1)*IM1 + CONJ(IM2)*IM2 - CONJ(IM3)*IM3 )/2.'
-            ]
-
-
-        immath(imagename=beamnames, outfile=stokesnames[0], expr=Sdag_M_S[0])
+        immath(imagename=beamnames, outfile=stokesnames[0], expr=self.Sdag_M_S[0])
         if not self.do_stokesi_only:
-            immath(imagename=beamnames, outfile=stokesnames[1], expr=Sdag_M_S[1])
-            immath(imagename=beamnames, outfile=stokesnames[2], expr=Sdag_M_S[2])
-            immath(imagename=beamnames, outfile=stokesnames[3], expr=Sdag_M_S[3])
+            immath(imagename=beamnames, outfile=stokesnames[1], expr=self.Sdag_M_S[1])
+            immath(imagename=beamnames, outfile=stokesnames[2], expr=self.Sdag_M_S[2])
+            immath(imagename=beamnames, outfile=stokesnames[3], expr=self.Sdag_M_S[3])
+
 
         ia.open(stokesnames[0])
         dat = ia.getchunk()
