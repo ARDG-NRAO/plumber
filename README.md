@@ -4,7 +4,7 @@
 
   Image plane polarization leakage correction for radio interferometers
   
-  [![arXiv](https://img.shields.io/badge/arXiv-1234.56789-b31b1b.svg)](https://arxiv.org/abs/2107.10009)
+  [![arXiv](https://img.shields.io/badge/arXiv-2107.10009-b31b1b.svg)](https://arxiv.org/abs/2107.10009)
   [![DOI](https://zenodo.org/badge/402479973.svg)](https://zenodo.org/badge/latestdoi/402479973)
   
 </div>
