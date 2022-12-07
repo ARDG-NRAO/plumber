@@ -5,14 +5,15 @@
   Image plane polarization leakage correction for radio interferometers
   
   [![arXiv](https://img.shields.io/badge/arXiv-2107.10009-b31b1b.svg)](https://arxiv.org/abs/2107.10009)
-  [![DOI](https://zenodo.org/badge/402479973.svg)](https://zenodo.org/badge/latestdoi/402479973)
+  [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5484098.svg)](https://doi.org/10.5281/zenodo.5484098)
+
   
 </div>
   
 
 Plumber generates full Stokes primary beam models for radio interferometers using Zernike model coefficients of the antenna aperture illumination pattern. The generated PB models are scaled and matched to the input image coordinate system in order to use standard PB correction tools (such as those found in [CASA](https://casadocs.readthedocs.io/en/stable/)).
 
-As of 2021 this supports VLA S Band and MeerKAT L band observations, although support for other telescopes and bands is simply a question of providing the coefficients via the input CSV file. 
+As of 2021 this supports VLA S Band and MeerKAT L band observations, although support for other telescopes and bands is simply a question of providing the coefficients via the input CSV file.
 
 
 ## Installation
@@ -110,3 +111,27 @@ Options:
 The coefficient files are within the `./plumber/data/` directory of this
 repository. When the repository is cloned locally, the path of the CSV files can be passed
 in via command line.
+
+
+## Citation
+
+If you have used `plumber` in your research, please cite the following paper : 
+
+Sekhar, S., Jagannathan, P., Kirk, B., Bhatnagar, S., & Taylor, R. (2022). Direction-dependent Corrections in Polarimetric Radio Imaging. III. A-to-Z Solver—Modeling the Full Jones Antenna Aperture Illumination Pattern. The Astronomical Journal, 163(2), 87.
+
+An example BibTeX entry is below : 
+```
+@article{Sekhar_2022,
+doi = {10.3847/1538-3881/ac41c4},
+url = {https://dx.doi.org/10.3847/1538-3881/ac41c4},
+year = {2022},
+month = {jan},
+publisher = {The American Astronomical Society},
+volume = {163},
+number = {2},
+pages = {87},
+author = {Srikrishna Sekhar and Preshanth Jagannathan and Brian Kirk and Sanjay Bhatnagar and Russ Taylor},
+title = {Direction-dependent Corrections in Polarimetric Radio Imaging. III. A-to-Z Solver—Modeling the Full Jones Antenna Aperture Illumination Pattern},
+journal = {The Astronomical Journal},
+}
+```
