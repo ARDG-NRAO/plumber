@@ -7,12 +7,8 @@ name = "plumber"
 dynamic = ["readme"]
 version = "0.1"
 authors = [
-         {name = "Srikrishna Sekhar",
-          email = "srikrishna@idia.ac.za"
-         },
-         {name = "Preshanth Jagannathan",
-          email = "pjaganna@nrao.edu"
-         }]
+         {name = "Srikrishna Sekhar", email = "srikrishna@idia.ac.za" },
+         {name = "Preshanth Jagannathan", email = "pjaganna@nrao.edu" }]
 description = "Image plane primary beam correction for radio interferometers"
 dependencies = [
     'casatools>=6.2',
@@ -22,6 +18,7 @@ dependencies = [
     'spectral_cube>=0.5',
     'astropy',
     'astroplan',
+    'pandas',
     'click',
     'matplotlib']
 license = {file="LICENSE"}
