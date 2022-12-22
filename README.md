@@ -15,8 +15,16 @@ Plumber generates full Stokes primary beam models for radio interferometers usin
 
 As of 2021 this supports VLA S Band and MeerKAT L band observations, although support for other telescopes and bands is simply a question of providing the coefficients via the input CSV file.
 
+---
 
-## Installation
+### Table of Contents
+- [Installation](#installation)
+- [Usage](#usage)
+- [Citation](#citation)
+
+
+
+# Installation
 First ensure you have `conda` available from [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://docs.anaconda.com/anaconda/index.html). [mamba](https://github.com/mamba-org/mamba) is also recommended to speed up the installation process. 
 
 Clone the repo, and then run 
@@ -35,7 +43,7 @@ You can fix this by updating your casa-data:
 
 ```python -m casatools --update-user-data```
 
-## Usage:
+# Usage:
 
 ```plumber <path_to_template_image> <path_to_coefficient_csv> [options]```
 
@@ -113,7 +121,7 @@ repository. When the repository is cloned locally, the path of the CSV files can
 in via command line.
 
 
-## Citation
+# Citation
 
 If you have used `plumber` in your research, please cite the following paper : 
 
