@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plumber"
+dynamic = ["readme"]
+version = "0.1"
+authors = [
+         {name = "Srikrishna Sekhar",
+          email = "srikrishna@idia.ac.za"
+         },
+         {name = "Preshanth Jagannathan",
+          email = "pjaganna@nrao.edu"
+         }]
+description = "Image plane primary beam correction for radio interferometers"
+dependencies = [
+    'casatools>=6.2',
+    'casatasks>=6.2',
+    'casadata',
+    'numpy>=1.8.0',
+    'spectral_cube>=0.5',
+    'astropy',
+    'astroplan',
+    'click',
+    'matplotlib']
+license = {file="LICENSE"}
+requires-python = ">=3.6"
+classifiers = [
+            "Programming Language :: Python :: 3",
+            "License :: OSI Approved :: MIT License",
+            "Operating System :: OS Independent",
+            ]
+
+[project.urls]
+"Homepage" = "https://github.com/ARDG-NRAO/plumber" 
+
+[project.scripts]
+plumber = "plumber.scripts.plumber:main"
+parang_finder = "plumber.scripts.parang_finder:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"]}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ['*.txt']
