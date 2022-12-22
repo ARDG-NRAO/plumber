@@ -15,7 +15,7 @@ dependencies = [
     'casatasks>=6.2',
     'casadata',
     'numpy>=1.8.0',
-    'spectral_cube>=0.5',
+    'spectral_cube @ git+https://github.com/radio-astro-tools/spectral-cube.git',
     'astropy',
     'astroplan',
     'pandas',
