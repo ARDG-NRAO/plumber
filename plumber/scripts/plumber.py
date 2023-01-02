@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import click
-from plumber.image import parse_image
+from plumber.image import parse_image, ImagePlaneCorrect
 from plumber.zernike import get_zcoeffs, zernikeBeam
 #from plumber.parang_finder import parallctic_angle
 
@@ -24,7 +24,7 @@ logger = logging.getLogger()
 
 ctx = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings = ctx)
-@click.argument('imagename', type=click.Path(exists=True))
+@click.argument('imagename', nargs=-1, type=click.Path(exists=True))
 @click.argument('CSV', type=click.File())
 @click.option('-a', '--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
 @click.option('-d', '--dish-dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
@@ -35,7 +35,8 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
 @click.option('--scale', nargs=2, type=float, help='X and Y scaling factors for number of pixels', default=[None, None], show_default=True)
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale):
+@click.option('-C', '--correct', is_flag=True, help='Run image plane leakage correction on the input image.')
+def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale, correct):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -63,7 +64,10 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     #if len(parang) > 2:
     #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
-    imsize, imfreq, is_stokes_cube = parse_image(imagename)
+    # There will always be imagename[0] even for a single input image.
+    template_image = imagename[0]
+
+    imsize, imfreq, is_stokes_cube = parse_image(template_image)
     zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
     logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
@@ -71,8 +75,10 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
 
     zb = zernikeBeam()
 
+    telescope = zb.get_telescope(template_image)
+
     for zdf in zdflist:
-        zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
+        zb.initialize(zdf, template_image, padfac=padding, dish_dia=dish_dia,
                             islinear=islinear, stokesi=stokesi, parang=parang,
                             parang_file=parang_file, parallel=parallel,
                             scale=scale)
@@ -80,9 +86,14 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
         jones_beams = zb.gen_jones_beams()
         stokes_beams = zb.jones_to_mueller(jones_beams)
 
-        zb.regrid_to_template(stokes_beams, imagename)
+        # Regrid the beams on to the template image
+        zb.regrid_to_template(stokes_beams, template_image)
         # Regrid so Stokes I peak is at the centre of the image
         zb.fix_pointing_offset(stokes_beams)
+
+        if correct:
+            leakage_correct = ImagePlaneCorrect(islinear, telescope)
+            leakage_correct.leakage_correct(stokes_beams, imagename)
 
     #if parang is not None:
         #stokes_beams = zb.rotate_beam(stokes_beams, parang)
