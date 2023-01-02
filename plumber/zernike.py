@@ -32,8 +32,6 @@ from casatools import image
 ia = image()
 
 # Use up to 4 concunrrent processes
-NCPU = min(multiprocessing.cpu_count(), 4)
-
 
 def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
     """
@@ -697,20 +695,23 @@ class zernikeBeam():
 
         # Load in the default Mueller expressions
         me = MuellerExpression(self.islinear, self.telescope)
-        self.Sdag_M_S = me.expr
+        self.Sdag_M_S = me.jones_to_mueller_expr
 
-        stokesnames = [f'I_{self.telescope}_{self.freq}MHz.im',
-                    f'IQ_{self.telescope}_{self.freq}MHz.im',
-                    f'IU_{self.telescope}_{self.freq}MHz.im',
-                    f'IV_{self.telescope}_{self.freq}MHz.im']
+        nmueller = len(self.Sdag_M_S)
+        stokesnames = []
+
+        for nn in range(nmueller):
+            mname = f'M{nn:02d}_{self.telescope}_{self.freq}MHz.im'
+            stokesnames.append(mname)
 
         [wipe_file(ss) for ss in stokesnames]
 
         immath(imagename=beamnames, outfile=stokesnames[0], expr=self.Sdag_M_S[0])
         if not self.do_stokesi_only:
-            immath(imagename=beamnames, outfile=stokesnames[1], expr=self.Sdag_M_S[1])
-            immath(imagename=beamnames, outfile=stokesnames[2], expr=self.Sdag_M_S[2])
-            immath(imagename=beamnames, outfile=stokesnames[3], expr=self.Sdag_M_S[3])
+            for idx, outname in enumerate(stokesnames[1:]):
+                idx += 1
+                print("Sdag_M_S ", self.Sdag_M_S[idx])
+                immath(imagename=beamnames, outfile=outname, expr=self.Sdag_M_S[idx])
 
 
         ia.open(stokesnames[0])
@@ -728,11 +729,6 @@ class zernikeBeam():
             dat /= maxv
             ia.putchunk(dat)
             ia.close()
-
-            # ia.fft() put it into linear coords, dump it back into SkyCoord
-            #shutil.rmtree(ss)
-            #ia.fromarray(ss, dat)
-            #ia.close()
 
         [wipe_file(ss) for ss in beamnames]
 
@@ -824,6 +820,9 @@ class zernikeBeam():
 
         _do_regrid_partial = partial(self._do_regrid_to_template, templatecoord=templatecoord, outcsys=outcsys)
 
+
+        NCPU = min(multiprocessing.cpu_count(), len(stokes_beams))
+
         if self.parallel and not self.do_stokesi_only:
             pool = multiprocessing.Pool(NCPU)
             pool.map(_do_regrid_partial, stokes_beams)
@@ -897,6 +896,7 @@ class zernikeBeam():
 
         _do_regrid_partial = partial(self._do_regrid_pointing_offset, templatecoord=csys_template, offset=offset)
 
+        NCPU = min(multiprocessing.cpu_count(), len(stokes_beams))
         if self.parallel and not self.do_stokesi_only:
             pool = multiprocessing.Pool(NCPU)
             pool.map(_do_regrid_partial, stokes_beams)
