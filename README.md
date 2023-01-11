@@ -27,7 +27,7 @@ As of 2021 this supports VLA S Band and MeerKAT L band observations, although su
 # Installation
 
 > **Note**
-> The `spectral-cube` dependency points to the [master branch](https://github.com/radio-astro-tools/spectral-cube.git), pending the stable release of certain bleeding-edge features that are required by `plumber`.
+> The `spectral-cube` dependency points to the [master branch](https://github.com/radio-astro-tools/spectral-cube.git), pending the stable release of certain bleeding-edge features that are required by `plumber`. Until this has been resolved, the `conda` method of installation does *not* work. However, it is still possible to use `pip install` within a `conda` environment.
 
 ## Installation via pip
 
