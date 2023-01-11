@@ -25,23 +25,19 @@ As of 2021 this supports VLA S Band and MeerKAT L band observations, although su
 
 
 # Installation
-First ensure you have `conda` available from [miniconda](https://docs.conda.io/en/latest/miniconda.html) or [anaconda](https://docs.anaconda.com/anaconda/index.html). [mamba](https://github.com/mamba-org/mamba) is also recommended to speed up the installation process. 
 
-Clone the repo, and then run 
+> **Note**
+> The `spectral-cube` dependency points to the [master branch](https://github.com/radio-astro-tools/spectral-cube.git), pending the stable release of certain bleeding-edge features that are required by `plumber`. 
 
-```conda env create plumber```
 
-This will create a conda virtual environment called `plumber`. To use `plumber` simply run
+## Installation via pip
 
-```conda activate plumber```
+Clone the repo, then `cd` into the cloned directory and run
 
-If you encounter a casa-data error like:
+```pip install .```
 
-```ImportError: measures data is not available, visit http://go.nrao.edu/casadata-info for more information```
+It is advisable to run the above command within a Python virtual environment, created using your favourite tool (e.g., `conda` or `pyenv`).
 
-You can fix this by updating your casa-data:
-
-```python -m casatools --update-user-data```
 
 # Usage:
 

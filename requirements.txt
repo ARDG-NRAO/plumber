@@ -1,6 +1,0 @@
-casatasks>=6.2
-casatools>=6.2
-spectral_cube
-setuptools
-
--e .
