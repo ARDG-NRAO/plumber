@@ -35,45 +35,6 @@ ia = image()
 NCPU = min(multiprocessing.cpu_count(), 4)
 
 
-def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
-    """
-    Given the input frequency of the image, returns the Pandas dataframe with
-    the coefficients corresponding to the input frequency. The frequencies in
-    the input CSV file are expected to be in MHz.
-
-    Inputs:
-    csv         Input CSV filename, string
-    imfreq      Image frequency in MHz, float
-
-    Returns:
-    zdf         Dataframe containing the subset of the CSV file which is closest
-                to imfreq.
-    zfreq       Frequency of the coefficients in MHz, float
-    nstokes     Number of stokes in the CSV, integer
-    """
-
-    zdflist = []
-    freqlist = []
-
-    df = pd.read_csv(csv, skipinitialspace=True)
-    nstokes = df['#stokes'].unique().size
-    freqs = df['freq'].unique()
-
-    #imfreq is an array astropy.units, so convert to right unit and grab
-    #numerical value
-    for ifreq in imfreq:
-        idx = np.argmin(np.abs(freqs - ifreq.to(u.MHz).value))
-        zfreq = freqs[idx]
-
-        zdf = df[df['freq'] == zfreq]
-
-        zdflist.append(zdf)
-        freqlist.append(zfreq)
-
-    return zdflist, freqlist, nstokes
-
-
-
 class zernikeBeam():
     """
     Generate the model beam on a 2D pixel grid.
