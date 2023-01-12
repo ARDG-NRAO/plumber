@@ -62,16 +62,35 @@ class CSVParser(FileParser):
         return self._nstokes_csv
 
 
-    def get_zcoeffs(self, csv: str, imfreq: list[float]) -> Union[pd.Dataframe, float, int]:
+    def csv_to_df(self, csv: str) -> pd.DataFrame:
+        """
+        Convert the input CSV into a Pandas DataFrame.
+
+        Inputs:
+        csv             Input CSV filename, str
+
+        Returns:
+        df              Pandas dataframe
+        """
+
+        self.filepath = csv
+
+        df = pd.read_csv(self.filepath, skipinitialspace=True)
+
+        return df
+
+
+    def get_zcoeffs(self, df: pd.DataFrame, imfreq: list[float]) -> Union[pd.Dataframe, float, int]:
     """
     Given the input frequency of the image, returns the Pandas dataframe with
-    the coefficients from the CSV file corresponding to the input frequency. The
-    frequencies in the input CSV file are expected to be in MHz.
+    the coefficients from the input dataframe corresponding to the input
+    frequency. The frequencies in the input dataframe file are expected to be in
+    MHz.
 
     `imfreq` should be a list of floats, that are `astropy.units` quantities.
 
     Inputs:
-    csv                 Input CSV filename, string
+    df                  Input pandas DataFrame
     imfreq              Image frequency in MHz, list[float]
 
     Returns:
@@ -85,7 +104,6 @@ class CSVParser(FileParser):
     self.dataframe_list = []
     self.frequency_list = []
 
-    df = pd.read_csv(csv, skipinitialspace=True)
     self.nstokes_csv = df['#stokes'].unique().size
     freqs = df['freq'].unique()
 
@@ -100,3 +118,12 @@ class CSVParser(FileParser):
             self.frequency_list.append(zfreq)
 
     return self.dataframe_list, self.frequency_list, self.nstokes_csv
+
+
+class ImageParser(FileParser):
+    """
+    Parse the input FITS/CASA image, and return the data and metadata.
+    """
+
+    def __init__(self):
+        pass
