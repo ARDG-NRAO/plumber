@@ -2,11 +2,9 @@
 
 import click
 from plumber.image import parse_image
-from plumber.zernike import get_zcoeffs, zernikeBeam
+from plumber.zernike import zernikeBeam
 from plumber.parsing import CSVParser
 #from plumber.parang_finder import parallctic_angle
-
-from importlib.resources import files
 
 import logging
 
@@ -69,7 +67,7 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
-    df = csv_parser.csv_to_df(csv)
+    df = csv_parser.csv_to_df(csv.name)
     zdflist, zfreqlist, nstokes = csv_parser.get_zcoeffs(df, imfreq)
 
     logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
