@@ -7,7 +7,12 @@ Module to parse the input images and CSV files.
 import os
 import numpy as np
 import pandas as pd
-from typing import Union
+
+import astropy.units as u
+
+from typing import Union, List, TypeVar
+
+Quantity = TypeVar('astropy.units.quantity.Quantity')
 
 class FileParser:
     """
@@ -16,7 +21,6 @@ class FileParser:
 
     def __init__(self):
         self._filepath = None
-
 
     @property
     def filepath(self) -> str:
@@ -50,16 +54,28 @@ class CSVParser(FileParser):
         self._nstokes_csv = None
 
     @property
-    def dataframe_list(self):
+    def dataframe_list(self) -> List[pd.DataFrame]:
         return self._dataframe_list
+
+    @dataframe_list.setter
+    def dataframe_list(self, value: List[pd.DataFrame]) -> None:
+        self._dataframe_list = value
 
     @property
     def frequency_list(self):
         return self._frequency_list
 
+    @frequency_list.setter
+    def frequency_list(self, value: Quantity) -> None:
+        self._frequency_list = value
+
     @property
     def nstokes_csv(self):
         return self._nstokes_csv
+
+    @nstokes_csv.setter
+    def nstokes_csv(self, value: float) -> None:
+        self._nstokes_csv = value
 
 
     def csv_to_df(self, csv: str) -> pd.DataFrame:
@@ -74,41 +90,43 @@ class CSVParser(FileParser):
         """
 
         self.filepath = csv
-
         df = pd.read_csv(self.filepath, skipinitialspace=True)
 
         return df
 
 
-    def get_zcoeffs(self, df: pd.DataFrame, imfreq: list[float]) -> Union[pd.Dataframe, float, int]:
-    """
-    Given the input frequency of the image, returns the Pandas dataframe with
-    the coefficients from the input dataframe corresponding to the input
-    frequency. The frequencies in the input dataframe file are expected to be in
-    MHz.
+    def get_zcoeffs(self, df: pd.DataFrame, imfreq: Quantity) -> Union[pd.DataFrame, float, int]:
+        """
+        Given the input frequency of the image, returns the Pandas dataframe with
+        the coefficients from the input dataframe corresponding to the input
+        frequency. The frequencies in the input dataframe file are expected to be in
+        MHz.
 
-    `imfreq` should be a list of floats, that are `astropy.units` quantities.
+        `imfreq` should be a list of floats, that are `astropy.units` quantities.
 
-    Inputs:
-    df                  Input pandas DataFrame
-    imfreq              Image frequency in MHz, list[float]
+        Inputs:
+        df                  Input pandas DataFrame
+        imfreq              Image frequency in MHz, astropy.units.quantity.Quantity
 
-    Returns:
-    dataframe_list      List of dataframe containing the subset of the CSV file which is
-                        closest to imfreq.
-    frequency_list      List of frequencies that were found in the CSV file,
-                        closest matching the input frequencies.
-    nstokes_csv         The number of Stokes parameters in the input CSV file.
-    """
+        Returns:
+        dataframe_list      List of dataframe containing the subset of the CSV file which is
+                            closest to imfreq.
+        frequency_list      List of frequencies that were found in the CSV file,
+                            closest matching the input frequencies.
+        nstokes_csv         The number of Stokes parameters in the input CSV file.
+        """
 
-    self.dataframe_list = []
-    self.frequency_list = []
+        self.dataframe_list = []
+        self.frequency_list = []
 
-    self.nstokes_csv = df['#stokes'].unique().size
-    freqs = df['freq'].unique()
+        if not type(imfreq) is u.quantity.Quantity:
+            raise TypeError(f'Input {imfreq} must be an astropy.units Quantity.')
 
-    # imfreq is astropy.units, so explicitly convert into MHz before compare.
-    for ifreq in imfreq:
+        self.nstokes_csv = df['#stokes'].unique().size
+        freqs = df['freq'].unique()
+
+        # imfreq is astropy.units, so explicitly convert into MHz before compare.
+        for ifreq in imfreq:
             idx = np.argmin(np.abs(freqs - ifreq.to(u.MHz).value))
             zfreq = freqs[idx]
 
@@ -117,7 +135,7 @@ class CSVParser(FileParser):
             self.dataframe_list.append(zdf)
             self.frequency_list.append(zfreq)
 
-    return self.dataframe_list, self.frequency_list, self.nstokes_csv
+        return self.dataframe_list, self.frequency_list, self.nstokes_csv
 
 
 class ImageParser(FileParser):
