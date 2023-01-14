@@ -20,7 +20,8 @@ dependencies = [
     'astroplan',
     'pandas',
     'click',
-    'matplotlib']
+    'matplotlib',
+    'pytest']
 license = {file="LICENSE"}
 requires-python = ">=3.8"
 classifiers = [
