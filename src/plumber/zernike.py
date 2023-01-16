@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel('INFO')
 
 from plumber.misc import wipe_file, make_unique
-from plumber.image import parse_image
+from plumber.parsing import ImageParser
 
 from casatasks import immath, imregrid
 from casatools import image
@@ -105,26 +105,6 @@ class zernikeBeam():
         # Sets ft_npix and ft_npix_os
         self.get_npix_aperture(templateim)
 
-
-    def get_telescope(self, templateim: str) -> str:
-        """
-        Get the telescope name from the image header
-
-        Input:
-        templateim      Name of the input template image, string
-
-        Returns:
-        telescope       Name of the input telescope
-        """
-
-        ia.open(templateim)
-        csys = ia.coordsys().torecord()
-        ia.close()
-
-        telescope = csys['telescope']
-        logger.debug(f"Telescope is {telescope}.")
-
-        return csys['telescope']
 
 
     def get_feed_basis(self) -> None:
@@ -224,7 +204,8 @@ class zernikeBeam():
         cdelt           The pixel delta in lambda, float
         """
 
-        imsize, imfreq, is_stokes_cube = parse_image(templateim)
+        image_parser = ImageParser()
+        imsize, imfreq, is_stokes_cube = image_parser.parse_image(templateim)
         freq = imfreq[0].value
 
         ia.open(templateim)

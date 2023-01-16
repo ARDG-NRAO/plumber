@@ -6,13 +6,19 @@ Module to parse the input images and CSV files.
 
 import os
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 import astropy.units as u
 
-from typing import Union, List, TypeVar
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel('INFO')
 
+from typing import Union, List, TypeVar
 Quantity = TypeVar('astropy.units.quantity.Quantity')
+
+
 
 class FileParser:
     """
@@ -144,4 +150,61 @@ class ImageParser(FileParser):
     """
 
     def __init__(self):
-        pass
+        self.imsize = [0,0]
+        self.imfreqs = [-1,]
+        self.is_stokes_cube = False
+
+    @staticmethod
+    def get_telescope(templateim: str) -> str:
+        """
+        Get the telescope name from the image header
+
+        Input:
+        templateim      Name of the input template image, string
+
+        Returns:
+        telescope       Name of the input telescope
+        """
+
+        ia.open(templateim)
+        csys = ia.coordsys().torecord()
+        ia.close()
+
+        telescope = csys['telescope']
+        logger.info(f"Telescope is {telescope}.")
+
+        return csys['telescope']
+
+
+    def parse_image(self, imagename : str) -> Union[npt.NDArray[np.float], np.NDArray[np.float], bool]:
+        """
+        Parse metadata from the image, such as imsize, central frequency, whether
+        it is a cube etc.
+
+        Inputs:
+        imagename           Name of the input image, string
+
+        Returns:
+        imsize              Size of the direction coordinates in pixels, array
+        reffreq             Reference frequency of the image in MHz, float
+        is_cube             Flag to indicate if the image is a cube, bool
+        """
+
+        try:
+            cube = StokesSpectralCube.read(imagename)
+        except IORegistryError:
+            # Probably CASA image
+            cube = StokesSpectralCube.read(imagename, format='casa_image')
+
+        if len(cube.shape) > 3 and cube.shape[-1] > 1:
+            self.is_stokes_cube = True
+        else:
+            self.is_stokes_cube = False
+
+        shape = cube.shape
+        self.imsize = [shape[0], shape[1]]
+
+        # This is always a list
+        self.imfreqs = cube.stokes_data['I'].spectral_axis
+
+        return self.imsize, self.imfreqs, self.is_stokes_cube
