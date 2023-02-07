@@ -10,6 +10,12 @@ import numpy.typing as npt
 import pandas as pd
 
 import astropy.units as u
+from astropy.io.registry import IORegistryError
+
+from spectral_cube import StokesSpectralCube
+
+from casatools import image
+ia = image()
 
 import logging
 logger = logging.getLogger(__name__)
@@ -170,13 +176,18 @@ class ImageParser(FileParser):
         csys = ia.coordsys().torecord()
         ia.close()
 
-        telescope = csys['telescope']
-        logger.info(f"Telescope is {telescope}.")
+        try:
+            telescope = csys['telescope']
+            logger.info(f"Telescope is {telescope}.")
+        except KeyError:
+            message = f'Telescope key does not exist in the image header. ' \
+                      f'Please specify via the --telescope command line parameter.'
+            raise KeyError(message)
 
-        return csys['telescope']
+        return telescope
 
 
-    def parse_image(self, imagename : str) -> Union[npt.NDArray[np.float], np.NDArray[np.float], bool]:
+    def parse_image(self, imagename : str) -> Union[npt.NDArray[np.float], npt.NDArray[np.float], bool]:
         """
         Parse metadata from the image, such as imsize, central frequency, whether
         it is a cube etc.

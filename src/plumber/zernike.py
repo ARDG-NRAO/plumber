@@ -31,7 +31,7 @@ from casatasks import immath, imregrid
 from casatools import image
 ia = image()
 
-# Use up to 4 concunrrent processes
+# Use up to 4 concunrrent processes -- one for each Stokes
 NCPU = min(multiprocessing.cpu_count(), 4)
 
 
@@ -63,7 +63,7 @@ class zernikeBeam():
         self.oversamp = 20
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
+    def initialize(self, df, templateim, padfac=8, dish_dia=[], telescope=None, islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -80,13 +80,11 @@ class zernikeBeam():
         """
 
         self.df = df
-        self.telescope = self.get_telescope(templateim)
+        self.telescope = telescope
         self.eta = [1., 1.]
 
         self.dish_dia = dish_dia
-        self.get_dish_diameter()
         self.islinear = islinear
-        self.get_feed_basis()
 
         self.padfac = int(padfac)
         self.parallel = parallel
@@ -106,59 +104,6 @@ class zernikeBeam():
         self.get_npix_aperture(templateim)
 
 
-
-    def get_feed_basis(self) -> None:
-        """
-        Get the feed basis, from the telescope name.
-        """
-
-        if self.islinear is not None:
-            outstr = 'circular' if self.islinear == False else 'linear'
-            logger.info(f"Overriding automatic determination of feed basis, using user supplied value of {outstr}")
-
-        if "vla" in self.telescope.lower():
-            self.islinear = False
-        elif "meerkat" in self.telescope.lower():
-            self.islinear = True
-        elif "alma" in self.telescope.lower():
-            self.islinear = True
-        elif "gmrt" in self.telescope.lower() and self.freq < 9e2:
-            self.islinear = False
-        elif "gmrt" in self.telescope.lower() and self.freq >= 9e2:
-            self.islinear = True
-        else:
-            raise ValueError("Unable to determine feed basis, unknown telescope. "
-            "Please pass in the feed basis via the islinear paramter to "
-            ".initialize()")
-
-
-    def get_dish_diameter(self) -> None:
-        """
-        Get the dish diameter for different instruments.
-
-        Returns:
-        None, sets self.dish_dia in place
-        """
-
-        if self.dish_dia is not None:
-            logger.info(f"Overriding automatic determination of telescope dish "
-                        "diameter. Using the input of {self.dish_dia} m")
-            return
-
-        if 'vla' in self.telescope.lower():
-            self.dish_dia = [25, 25]
-        elif 'meerkat' in self.telescope.lower():
-            #self.dish_dia = 13.5
-            self.dish_dia = [13.5, 13.5]
-        elif 'alma' in self.telescope.lower():
-            self.dish_dia = [12, 12]
-        elif 'gmrt' in self.telescope.lower():
-            self.dish_dia = [45, 45]
-        else:
-            raise ValueError('Unknown telescope type. Please initialize the '
-                             'class with the dish_diameter value in metres.')
-
-        logger.info(f"Using dish diameter of ({self.dish_dia[0]}m, {self.dish_dia[1]}m) for telescope {self.telescope}.")
 
 
 

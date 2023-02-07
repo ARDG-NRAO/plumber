@@ -3,6 +3,7 @@
 import click
 from plumber.zernike import zernikeBeam
 from plumber.parsing import CSVParser, ImageParser
+from plumber.telescope import TelescopeInfo
 #from plumber.parang_finder import parallctic_angle
 
 import logging
@@ -55,12 +56,11 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     The eta column in the CSV is optional.
     """
 
-    islinear = None
-    if linear is True:
-        islinear = True
+    islinear = True if linear is True else False
 
     csv_parser = CSVParser()
     image_parser = ImageParser()
+    telescope_info = TelescopeInfo()
 
     #parang = sorted(parang)
     #if len(parang) > 2:
@@ -68,6 +68,21 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
 
     telescope = image_parser.get_telescope(imagename)
     imsize, imfreq, is_stokes_cube = image_parser.parse_image(imagename)
+
+    # Given the telescope name, figure out it's properties
+    telescope_info.telescope_name = telescope
+    telescope_info.set_feed_basis()
+
+    if dish_dia is None:
+        telescope_info.set_dish_diameter()
+    else:
+        telescope_info.dish_diameter = dish_dia
+
+    # XXX need to implement
+    # XXX Need to fix the zb.initialize call below to reflect removing the telescope functionality
+    # This needs to be specifiable on the command line as well, to break MeerKAT L-Band/UHF ambiguity.
+    telescope_info.set_band(imfreq)
+
 
     df = csv_parser.csv_to_df(csv.name)
     zdflist, zfreqlist, nstokes = csv_parser.get_zcoeffs(df, imfreq)
@@ -77,8 +92,9 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     zb = zernikeBeam()
 
     for zdf in zdflist:
-        zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
-                            islinear=islinear, stokesi=stokesi, parang=parang,
+        zb.initialize(zdf, imagename, padfac=padding, dish_dia=telescope_info.dish_diameter,
+                            telescope = telescope_info.telescope_name,
+                            islinear=telescope_info.is_linear, stokesi=stokesi, parang=parang,
                             parang_file=parang_file, parallel=parallel,
                             scale=scale)
 
