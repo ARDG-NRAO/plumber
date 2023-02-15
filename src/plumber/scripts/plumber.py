@@ -4,6 +4,7 @@ import click
 from plumber.image import parse_image
 from plumber.zernike import get_zcoeffs, zernikeBeam
 #from plumber.parang_finder import parallctic_angle
+import astropy.units as u
 
 import logging
 
@@ -30,12 +31,13 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.option('-d', '--dish-dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
 @click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-c', '--circular', is_flag=True, help='Specifies if the telescope has circular feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
+@click.option('-f', '--frequency', is_flag=True, help='Force the frequency at which to generate the PB. Plumber will select the coefficients at the nearest frequency.')
 @click.option('-I', '--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
 @click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
 @click.option('--scale', nargs=2, type=float, help='X and Y scaling factors for number of pixels', default=[None, None], show_default=True)
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale):
+def main(imagename, csv, padding, dish_dia, linear, circular, frequency, stokesi, parallel, parang, parang_file, scale):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -64,10 +66,14 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
     imsize, imfreq, is_stokes_cube = parse_image(imagename)
-    zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
 
-    logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
-    #logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
+    if frequency is not None:
+        frequency = [frequency*u.MHz,]
+        zdflist, zfreqlist, nstokes = get_zcoeffs(csv, frequency)
+        logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Forcing model PB to be generated at {zfreqlist[0]:.2f} MHz")
+    else:
+        zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
+        logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
 
     zb = zernikeBeam()
 
