@@ -263,8 +263,8 @@ class zernikeBeam():
         cdelt           The pixel delta in lambda, float
         """
 
-        imsize, imfreq, is_stokes_cube = parse_image(templateim)
-        freq = imfreq[0].value
+        #imsize, imfreq, is_stokes_cube = parse_image(templateim)
+        freq = self.freq * 1e6 # From MHz to Hz
 
         ia.open(templateim)
         template_csys = ia.coordsys().torecord()
