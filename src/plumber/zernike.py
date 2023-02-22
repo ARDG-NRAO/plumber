@@ -925,6 +925,59 @@ class zernikeBeam():
                 _do_regrid_partial(ss)
 
 
+
+    def fix_imhead(self, stokes_beams: list[str]) -> None:
+        """
+        Put in the correct metadata into the final images. They contain the default telescope name (ALMA)
+        and the frequency of the template image, not of the generated PB.
+
+        Inputs:
+        stokes_beams    List of names of the Stokes beam models, list of str
+
+        Returns:
+        None
+        """
+
+        for idx, stok_beam in enumerate(stokes_beams):
+            if self.do_stokesi_only and idx > 0:
+                break
+
+            ia.open(stok_beam)
+            csys = ia.coordsys()
+
+            init_tel = csys.telescope()
+            csys.settelescope(self.telescope)
+            final_tel = csys.telescope()
+
+            csys_dict = csys.torecord()
+            ia.setcoordsys(csys_dict)
+
+            logger.debug(f"Telescope changed from {init_tel} to {final_tel}")
+
+            # Below is probably not needed, so it's commented out.
+            # However in case it is, it's here.
+            #spectral_crval = csys.referencevalue('spectral')['numeric'][0]
+            #spectral_crpix = csys.referencepixel('spectral')['numeric'][0]
+            #spectral_cdelt = csys.increment('spectral')['numeric'][0]
+
+            #if crpix != 1:
+            #    if crpix < 0:
+            #        refval = crval - cdelt*crpix
+            #    else:
+            #        refval = crval + cdelt*crpix
+            #else:
+            #    refval = crval
+            #
+            #csys.setreferencevalue(refval)
+
+            #logger.debug(f"Reference frequency is {refval} Hz")
+            #logger.debug(f"self.freq is {self.freq} MHz")
+
+            csys.done()
+            ia.close()
+
+
+
     def rotate_image(self, indat: np.ndarray, parang: float) -> np.ndarray:
         """
         Rotate the input data by parang degrees in place.
