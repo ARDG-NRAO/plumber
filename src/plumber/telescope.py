@@ -36,7 +36,7 @@ class TelescopeInfo():
     @telescope_name.setter
     def telescope_name(self, name:str) :
         # If telescope name is unknown, print warning and set flag
-        if not any([name.lower() in tname for tname in self.known_telescopes]):
+        if not any([name.lower() in tname.lower() for tname in self.known_telescopes]):
             self.is_known = False
             logger.warning(f'Telescope name {name} is unknown. Using default parameters everywhere. '
                            'Please pass in specific values through the command line if necessary.')
@@ -59,10 +59,6 @@ class TelescopeInfo():
             self.is_linear = False
             return
 
-        if self.is_linear is not None:
-            outstr = 'circular' if self.is_linear == False else 'linear'
-            logger.info(f"Overriding automatic determination of feed basis, using user supplied value of {outstr}")
-
         if "vla" in self.telescope_name.lower():
             self.is_linear = False
         elif "meerkat" in self.telescope_name.lower():
@@ -73,6 +69,9 @@ class TelescopeInfo():
             self.is_linear = False
         else: # This should never happen
             raise ValueError("Unable to determine feed basis, something went wrong.")
+
+        basis = "linear" if self.is_linear else "circular"
+        logger.info(f"Using {basis} basis for telescope {self.telescope_name}")
 
 
     def set_dish_diameter(self) -> None:

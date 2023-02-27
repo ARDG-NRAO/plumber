@@ -29,14 +29,12 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.argument('CSV', type=click.File())
 @click.option('-a', '--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
 @click.option('-d', '--dish-dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
-@click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
-@click.option('-c', '--circular', is_flag=True, help='Specifies if the telescope has circular feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-I', '--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
 @click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
 @click.option('--scale', nargs=2, type=float, help='X and Y scaling factors for number of pixels', default=[None, None], show_default=True)
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale):
+def main(imagename, csv, padding, dish_dia, stokesi, parallel, parang, parang_file, scale):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -56,8 +54,6 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     The eta column in the CSV is optional.
     """
 
-    islinear = True if linear is True else False
-
     csv_parser = CSVParser()
     image_parser = ImageParser()
     telescope_info = TelescopeInfo()
@@ -68,6 +64,8 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
 
     telescope = image_parser.get_telescope(imagename)
     imsize, imfreq, is_stokes_cube = image_parser.parse_image(imagename)
+
+    print(f"Telescope is {telescope}")
 
     # Given the telescope name, figure out it's properties
     telescope_info.telescope_name = telescope
