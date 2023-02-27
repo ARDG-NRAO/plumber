@@ -102,6 +102,8 @@ def main(imagename, csv, padding, dish_dia, stokesi, parallel, parang, parang_fi
         zb.regrid_to_template(stokes_beams, imagename)
         # Regrid so Stokes I peak is at the centre of the image
         zb.fix_pointing_offset(stokes_beams)
+        # Fix header info - telescope name, and reference frequency if necessary
+        zb.fix_imhead(stokes_beams)
 
     #if parang is not None:
         #stokes_beams = zb.rotate_beam(stokes_beams, parang)
