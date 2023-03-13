@@ -69,17 +69,18 @@ def main(imagename, csv, padding, dish_dia, stokesi, parallel, parang, parang_fi
 
     # Given the telescope name, figure out it's properties
     telescope_info.telescope_name = telescope
-    telescope_info.set_feed_basis()
+    telescope_info.get_feed_basis()
 
     if dish_dia is None:
-        telescope_info.set_dish_diameter()
+        telescope_info.get_dish_diameter()
     else:
         telescope_info.dish_diameter = dish_dia
 
-    # XXX need to implement
+    # XXX need to implement - this is a dummy function for now
     # XXX Need to fix the zb.initialize call below to reflect removing the telescope functionality
     # This needs to be specifiable on the command line as well, to break MeerKAT L-Band/UHF ambiguity.
-    telescope_info.set_band(imfreq)
+    # And similar ambiguity for other instruments like VLA
+    telescope_info.get_band(imfreq)
 
 
     df = csv_parser.csv_to_df(csv.name)

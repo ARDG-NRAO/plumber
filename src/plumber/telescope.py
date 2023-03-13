@@ -46,13 +46,16 @@ class TelescopeInfo():
         self._telescope_name = name
 
 
-    def set_feed_basis(self) -> None:
+    def get_feed_basis(self) -> None:
         """
         Get the feed basis from the telescope name.
         """
 
         # XXX : Need to take into acount uGMRT linear feeds at L-Band and VLA
         # linear feeds at P Band
+
+        if self.telescope_name == '':
+            raise ValueError('Please set the telescope name to determine the band.')
 
         if not self.is_known:
             logger.warning(f"Using default linear basis for unknown telescope {self.telescope_name}")
@@ -72,12 +75,16 @@ class TelescopeInfo():
 
         basis = "linear" if self.is_linear else "circular"
         logger.info(f"Using {basis} basis for telescope {self.telescope_name}")
+        return basis
 
 
-    def set_dish_diameter(self) -> None:
+    def get_dish_diameter(self) -> None:
         """
         Get the dish diameter from the telescope name.
         """
+
+        if self.telescope_name == '':
+            raise ValueError('Please set the telescope name to determine the band.')
 
         if not self.is_known:
             logger.warning(f"Using default dish diameter of 1m for unknown telescope {self.telescope_name}")
@@ -100,10 +107,11 @@ class TelescopeInfo():
         else: # This should never happen.
             raise ValueError("Unable to determine telescope type. Something went wrong.")
 
+        return self.dish_diameter
         logger.info(f"Using dish diameter of ({self.dish_diameter[0]}m, {self.dish_diameter[1]}m) for telescope {self.telescope_name}.")
 
 
-    def set_band(self, inp_frequency: Union[float,npt.NDArray[float]]) -> None:
+    def get_band(self, inp_frequency: Union[float,npt.NDArray[float]]) -> None:
         """
         Given the input frequency/frequencies, determine the band of the telescope.
 
