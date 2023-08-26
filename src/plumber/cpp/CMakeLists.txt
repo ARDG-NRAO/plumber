@@ -23,7 +23,7 @@ if(NOT pybind11_POPULATED)
         )          
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/pybind11)        
 endif()
-set(WRAPPER_LIST ZernikePolyCalc ZernikePolyCalc2py)
+set(WRAPPER_LIST ZernikePolyCalc2py)
 
 foreach(WRAPPER IN LISTS WRAPPER_LIST)
     pybind11_add_module(${WRAPPER} ${WRAPPER}.cc)
