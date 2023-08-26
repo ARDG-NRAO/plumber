@@ -11,7 +11,7 @@ set(CMAKE_C_FLAGS "${OPT} -std=c++11 -lm -Wno-deprecated \
            -Woverloaded-virtual -Wcast-align                \
            -Wno-comment -D_FILE_OFFSET_BITS=64              \
            -D_LARGEFILE_SOURCE ")
-p
+
 set(INSTALLDIR "install")
 
 FetchContent_GetProperties(pybind11)
