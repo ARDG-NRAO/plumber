@@ -24,9 +24,11 @@ if(NOT pybind11_POPULATED)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/pybind11)        
 endif()
 set(WRAPPER_LIST ZernikePolyCalc2py)
-
+add_library(ZernikePolyCalc SHARED ZernikePolyCalc.cc)
 foreach(WRAPPER IN LISTS WRAPPER_LIST)
     pybind11_add_module(${WRAPPER} ${WRAPPER}.cc)
     target_link_libraries(${WRAPPER} PRIVATE ${APP_LINK_LIBRARIES})
     install(TARGETS ${WRAPPER} DESTINATION "${CMAKE_SOURCE_DIR}/install") 
 endforeach()
+
+install(TARGETS ZernikePolyCalc DESTINATION "${CMAKE_SOURCE_DIR}/install") 
