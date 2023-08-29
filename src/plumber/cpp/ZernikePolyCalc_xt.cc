@@ -60,7 +60,6 @@ using namespace std;
         auto x_shape = xgrid.shape();
         auto unit_vector = xt::ones<double>({x_shape[0], x_shape[1]});
         xt::xtensor<double,2> Z1  =  c(0) * unit_vector;//#m = 0    n = 0
-        // xt::xtensor<double,2> Z1  =  c( 0) * xt::ones<double> ({x_shape, x_shape}) ;//#m = 0    n = 0
         xt::xtensor<double,2> Z2  =  c( 1) * x ;//#m = -1   n = 1
         xt::xtensor<double,2> Z3  =  c( 2) * y ;//#m = 1    n = 1
         xt::xtensor<double,2> Z4  =  c( 3) * 2*x*y ;//#m = -2   n = 2

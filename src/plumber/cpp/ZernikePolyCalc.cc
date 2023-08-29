@@ -30,7 +30,6 @@
 #include "ZernikePolyCalc.h"
 #include <sys/stat.h>
 
-
 using namespace std;
 
 
