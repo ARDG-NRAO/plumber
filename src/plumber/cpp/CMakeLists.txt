@@ -1,11 +1,11 @@
 project(ZernikePolynomials LANGUAGES CXX)
 
 cmake_minimum_required(VERSION 3.12.0)
-set (CMAKE_CXX_STANDARD 11)
+set (CMAKE_CXX_STANDARD 14)
 set(OPT "-g -O2 ")
 include(FetchContent)
 
-set(CMAKE_C_FLAGS "${OPT} -std=c++11 -lm -Wno-deprecated \
+set(CMAKE_C_FLAGS "${OPT} -std=c++14 -lm -Wno-deprecated \
            ${DEFS64}                                        \
            -Wall -pipe -Wno-non-template-friend             \
            -Woverloaded-virtual -Wcast-align                \
@@ -24,7 +24,7 @@ if(NOT pybind11_POPULATED)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/pybind11)        
 endif()
 set(WRAPPER_LIST ZernikePolyCalc2py)
-add_library(ZernikePolyCalc SHARED ZernikePolyCalc.cc)
+add_library(ZernikePolyCalc SHARED ZernikePolyCalc.cc ZernikePolyCalc.h ZernikePolyCalc_xt.cc) 
 foreach(WRAPPER IN LISTS WRAPPER_LIST)
     pybind11_add_module(${WRAPPER} ${WRAPPER}.cc)
     target_link_libraries(${WRAPPER} PRIVATE ${APP_LINK_LIBRARIES})

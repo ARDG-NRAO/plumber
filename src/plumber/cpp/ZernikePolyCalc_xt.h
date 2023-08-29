@@ -1,4 +1,4 @@
-//# ZernikeCalc.h: Definition for ZernikeCalc
+//# ZernikePolyCalc_xt.cc: Implementation for ZernikeCalc
 //# Copyright (C) 1996,1997,1998,1999,2000,2002
 //# Associated Universities, Inc. Washington DC, USA.
 //#
@@ -26,39 +26,31 @@
 //#
 //# $Id$
 
-#ifndef ZERNIKEPOLYCALC_H
-#define ZERNIKEPOLYCALC_H
+#ifndef ZERNIKEPOLYCALCXT_H
+#define ZERNIKEPOLYCALCXT_H
 
-#include <sys/stat.h>
-#include <math.h>
-#include <iostream>
-#include <fstream>
-#include <vector>
-#include <string>
+#include <xtensor/xarray.hpp>
+#include <xtensor/xio.hpp>
+#include "ZernikePolyCalc_xt.h"
+#include <xtensor/xmath.hpp>
+
+// #include <xtensor/xview.hpp>
+// #include <xtensor/xadapt.hpp>
+// #include <xtensor/xsort.hpp>
+// #include <xtensor/xindex_view.hpp>
+// #include <xtensor-python/pyarray.hpp>
+// #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+// #define FORCE_IMPORT_ARRAY
+// #include <xtensor-python/pytensor.hpp>
+// #include <xtensor-python/pyvectorize.hpp>
+// #include <xtensor-python/xtensor.hpp>
 
 using namespace std;
-
-  class ZernikePolyCalc
+  class ZernikePolyCalcXT
   {
   public:
-    ZernikePolyCalc():Z_p(),C_p()
-    {};
-
-    ~ZernikePolyCalc(){};
-
-    ZernikePolyCalc& operator=(const ZernikePolyCalc& other);
-
-    double powl(double base, int exp);
-    vector<vector<double>> zernikeSurface(vector<double>& amp, vector<vector<float>>& xCoords, 
-						    vector<vector<float>>& yCoords, int xSize, int ySize,
-						    vector<vector<double>>& surface);
-
-    inline int ncoeffs() {return C_p.size();};
-    inline vector<float> getCoeffs() {return C_p;};
-    inline vector<float> getZPolyvals() {return Z_p;};
-
-
-    vector<float> Z_p, C_p; // The _p is meant to represent the private variables in this class.
-
+    ZernikePolyCalcXT(){};
+    ~ZernikePolyCalcXT(){};
+    xt::xtensor<double,2> zernikesurface (xt::xtensor<double,1>& coeffs, xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid);
   };
 #endif
