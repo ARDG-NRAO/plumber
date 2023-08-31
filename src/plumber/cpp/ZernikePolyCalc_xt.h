@@ -29,7 +29,7 @@
 #ifndef ZERNIKEPOLYCALCXT_H
 #define ZERNIKEPOLYCALCXT_H
 
-#include <xtensor/xarray.hpp>
+#include <xtensor/xtensor.hpp>
 #include <xtensor/xio.hpp>
 #include "ZernikePolyCalc_xt.h"
 #include <xtensor/xmath.hpp>
@@ -40,17 +40,32 @@
 // #include <xtensor/xindex_view.hpp>
 // #include <xtensor-python/pyarray.hpp>
 // #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-// #define FORCE_IMPORT_ARRAY
+#define FORCE_IMPORT_ARRAY
 // #include <xtensor-python/pytensor.hpp>
 // #include <xtensor-python/pyvectorize.hpp>
 // #include <xtensor-python/xtensor.hpp>
 
 using namespace std;
+using namespace xt;
   class ZernikePolyCalcXT
   {
   public:
     ZernikePolyCalcXT(){};
+    ZernikePolyCalcXT(xt::xtensor<double,1> coeffs,  xt::xtensor<double,2> xgrid,  xt::xtensor<double,2> ygrid) {
+      coeffs_p = coeffs;
+      xgrid_p = xgrid;
+      ygrid_p = ygrid;}
+      // evaluate (surface_p);}
     ~ZernikePolyCalcXT(){};
-    xt::xtensor<double,2> zernikesurface (xt::xtensor<double,1>& coeffs, xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid);
+    xt::xtensor<double,2> zsurface ( xt::xtensor<double,1>& coeffs,  xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid);
+    void setcoeffs(xt::xtensor<double,2>& coeffs);
+    void setxgrid(xt::xtensor<double,2>& xgrid);
+    void setygrid(xt::xtensor<double,2>& ygrid);
+    void evaluate(xt::xtensor<double,2>& surface_p) {surface_p = zsurface(coeffs_p, xgrid_p, ygrid_p);};
+    xt::xtensor<double,2> getsurface(xt::xtensor<double,2> surface){ evaluate(surface); return surface;};
+     // xt::xtensor<double,2> surface_p;
+    xt::xtensor<double,1> coeffs_p;
+    xt::xtensor<double,2> xgrid_p, ygrid_p, surface_p;
+
   };
 #endif

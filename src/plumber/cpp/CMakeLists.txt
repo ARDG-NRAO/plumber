@@ -1,6 +1,6 @@
 project(ZernikePolynomials LANGUAGES CXX)
 
-cmake_minimum_required(VERSION 3.24.0)
+cmake_minimum_required(VERSION 3.18.0)
 set (CMAKE_CXX_STANDARD 14)
 set(OPT "-g -O2 ")
 include(FetchContent)
@@ -10,7 +10,8 @@ set(CMAKE_C_FLAGS "${OPT} -std=c++14 -lm -Wno-deprecated \
            -Wall -pipe -Wno-non-template-friend             \
            -Woverloaded-virtual -Wcast-align                \
            -Wno-comment -D_FILE_OFFSET_BITS=64              \
-           -D_LARGEFILE_SOURCE ")
+           -D_LARGEFILE_SOURCE 
+           -I/home/nemo/Sofware/xtensor-stack/install/include")
 
 set(INSTALLDIR "install")
 set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR}/${INSTALLDIR})
@@ -26,33 +27,36 @@ FetchContent_Declare(pybind11
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(pybind11)
 
-FetchContent_Declare(xtl
-  GIT_REPOSITORY https://github.com/xtensor-stack/xtl
-  GIT_TAG 0.7.5
-  GIT_SHALLOW FALSE)
+# FetchContent_Declare(xtl
+#   GIT_REPOSITORY https://github.com/xtensor-stack/xtl
+#   GIT_TAG 0.7.5
+#   GIT_SHALLOW FALSE)
 
-FetchContent_MakeAvailable(xtl)
+# FetchContent_MakeAvailable(xtl)
 
-FetchContent_Declare(xtensor
-  GIT_REPOSITORY https://github.com/xtensor-stack/xtensor
-  GIT_TAG 0.24.6
-  GIT_SHALLOW FALSE)
+# FetchContent_Declare(xtensor
+#   GIT_REPOSITORY https://github.com/xtensor-stack/xtensor
+#   GIT_TAG 0.24.6
+#   GIT_SHALLOW FALSE)
 
-FetchContent_MakeAvailable(xtensor)
+# FetchContent_MakeAvailable(xtensor)
+# # 
+# FetchContent_Declare(xtensor-python
+    # GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-python
+    # GIT_TAG 0.24.1
+    # GIT_SHALLOW FALSE)
+# FetchContent_MakeAvailable(xtensor-python)
+find_package(xtl REQUIRED)
+find_package(xtensor REQUIRED)
+find_package(xtensor-python REQUIRED)
 
-FetchContent_Declare(xtensor-python
-    GIT_REPOSITORY https://github.com/xtensor-stack/xtensor-python
-    GIT_TAG 0.24.1
-    GIT_SHALLOW FALSE)
-FetchContent_MakeAvailable(xtensor-python)
-
-set(WRAPPER_LIST ZernikePolyCalc2py)
-add_library(ZernikePolyCalc SHARED ZernikePolyCalc.cc ZernikePolyCalc_xt.cc)
-target_link_libraries(ZernikePolyCalc PRIVATE xtensor)
+set(WRAPPER_LIST ZernikePolyCalc_xt2py)
+add_library(ZernikePolyCalc SHARED ZernikePolyCalc_xt.cc ZernikePolyCalc_xt.h)
+target_link_libraries(ZernikePolyCalc PRIVATE xtensor xtl pybind11::module xtensor-python)
 
 foreach(WRAPPER IN LISTS WRAPPER_LIST)
     pybind11_add_module(${WRAPPER} ${WRAPPER}.cc)
-    # target_link_libraries(${WRAPPER} PRIVATE ${APP_LINK_LIBRARIES})
+    target_link_libraries(${WRAPPER} PRIVATE xtensor xtl pybind11::module xtensor-python ZernikePolyCalc)
     install(TARGETS ${WRAPPER} DESTINATION "${CMAKE_SOURCE_DIR}/install") 
 endforeach()
 

@@ -25,11 +25,10 @@
 //#
 //#
 //# $Id$
-#include <xtensor/xarray.hpp>
+#include <xtensor/xtensor.hpp>
 #include <xtensor/xio.hpp>
 #include "ZernikePolyCalc_xt.h"
 #include <xtensor/xmath.hpp>
-#include <xtensor/xview.hpp>
 // #include <xtensor/xadapt.hpp>
 // #include <xtensor/xsort.hpp>
 // #include <xtensor/xindex_view.hpp>
@@ -47,7 +46,7 @@ using namespace std;
     // xgrid: x coordinates of the grid
     // ygrid: y coordinates of the grid
     // return: Zernike surface
-    xt::xtensor<double,2> ZernikePolyCalcXT::zernikesurface (xt::xtensor<double,1>& coeffs, xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid)
+    xt::xtensor<double,2> ZernikePolyCalcXT::zsurface (xt::xtensor<double,1>& coeffs, xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid)
     {
         xt::xtensor<double,1> c = xt::zeros<double>({67});
         auto coeffs_shape = coeffs.size();
