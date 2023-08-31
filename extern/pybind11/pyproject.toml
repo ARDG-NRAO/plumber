@@ -1,0 +1,20 @@
+[build-system]
+requires = [
+    "scikit-build-core",
+    "numpy",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pybind11"
+version = "2.11.1"
+description = "Python bindings for C++"
+keywords = ["c-plus-plus", "python-bindings", "numpy"]
+readme = "README.md"
+license = {text = "GPL-3.0 license"}
+dependencies = ["numpy"]
+
+[tool.scikit-build]
+wheel.py-api = "py3"
+wheel.install-dir = "pybind11"
+wheel.expand-macos-universal-tags = false

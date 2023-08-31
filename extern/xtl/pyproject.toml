@@ -1,0 +1,15 @@
+[build-system]
+requires = ["scikit-build-core"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "xtl"
+version = "0.7.5"
+description = "The x template library"
+readme = "README.md"
+license = {text = "GPL-3.0 license"}
+
+[tool.scikit-build]
+wheel.py-api = "py3"
+wheel.install-dir = "xtl"
+wheel.expand-macos-universal-tags = false

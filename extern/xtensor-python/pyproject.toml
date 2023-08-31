@@ -1,0 +1,21 @@
+[build-system]
+requires = [
+    "scikit-build-core",
+    "pybind11 >=2.4.3, <3",
+    "numpy",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "xtensor-python"
+version = "0.26.1"
+description = "Python bindings for xtensor"
+keywords = ["c-plus-plus", "python-bindings", "tensor", "numpy"]
+readme = "README.md"
+license = {text = "GPL-3.0 license"}
+dependencies = ["pybind11 >=2.4.3, <3", "numpy"]
+
+[tool.scikit-build]
+wheel.py-api = "py3"
+wheel.install-dir = "xtensor-python"
+wheel.expand-macos-universal-tags = false
