@@ -8,7 +8,7 @@ project(
 include(FetchContent)
 
 FetchContent_Declare(pybind11
-      GIT_REPOSITORY https://github.com/pybind11/pybind11.git
+      GIT_REPOSITORY https://github.com/pybind/pybind11.git
       GIT_TAG ${SKBUILD_PROJECT_VERSION}
       GIT_SHALLOW False)
 
