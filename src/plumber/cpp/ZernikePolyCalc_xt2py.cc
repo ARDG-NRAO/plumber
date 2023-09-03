@@ -45,17 +45,13 @@ namespace py = pybind11;
 using namespace std;
 
 xt::pytensor<double,2> ZernikePolyCalc_xt2py (xt::pytensor<double,1>& coeffs, xt::pytensor<double,2>& xgrid, xt::pytensor<double,2>& ygrid) {
-  int ncoeffs = coeffs.shape()[0];
-  int ngrid = xgrid.shape()[0];
-  xt::pytensor<double,2> surface = xt::zeros<double>({ngrid, ngrid});
   ZernikePolyCalcXT *zpcxt;
   zpcxt = new ZernikePolyCalcXT(coeffs, xgrid, ygrid);
-//   zpcxt.zernikesurface(coeffs, xgrid, ygrid);
-  surface = zpcxt->getsurface(surface);
-  return surface;
+  // cerr << "zpcxt->coeffs_p = " << zpcxt->coeffs_p << endl;
+  return zpcxt->surface_p;
 }
 PYBIND11_MODULE(ZernikePolyCalc_xt2py, m) {
     xt::import_numpy();
-    m.def("ZernikePolyCalc_xt2py", &ZernikePolyCalc_xt2py, "Calculate Zernike surface");
+    m.def("ZernikePolyCalc_xt2py", &ZernikePolyCalc_xt2py, "Calculate Zernike surface", py::arg("coeffs"), py::arg("xgrid"), py::arg("ygrid"));
     }
 

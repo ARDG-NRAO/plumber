@@ -50,22 +50,22 @@ using namespace xt;
   class ZernikePolyCalcXT
   {
   public:
-    ZernikePolyCalcXT(){};
+    ZernikePolyCalcXT() {};
+    xt::xtensor<double,1> coeffs_p ;
+    xt::xtensor<double,2> xgrid_p, ygrid_p, surface_p;
     ZernikePolyCalcXT(xt::xtensor<double,1> coeffs,  xt::xtensor<double,2> xgrid,  xt::xtensor<double,2> ygrid) {
       coeffs_p = coeffs;
       xgrid_p = xgrid;
-      ygrid_p = ygrid;}
-      // evaluate (surface_p);}
+      ygrid_p = ygrid;
+      surface_p = xt::zeros<double>({xgrid_p.shape()[0], xgrid_p.shape()[1]});
+      surface_p = zsurface(coeffs_p, xgrid_p, ygrid_p);
+      // cerr << "ZernikePolyCalcXT constructor: surface_p = " << surface_p << endl;
+    }
     ~ZernikePolyCalcXT(){};
-    xt::xtensor<double,2> zsurface ( xt::xtensor<double,1>& coeffs,  xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid);
-    void setcoeffs(xt::xtensor<double,2>& coeffs);
-    void setxgrid(xt::xtensor<double,2>& xgrid);
-    void setygrid(xt::xtensor<double,2>& ygrid);
-    void evaluate(xt::xtensor<double,2>& surface_p) {surface_p = zsurface(coeffs_p, xgrid_p, ygrid_p);};
-    xt::xtensor<double,2> getsurface(xt::xtensor<double,2> surface){ evaluate(surface); return surface;};
-     // xt::xtensor<double,2> surface_p;
-    xt::xtensor<double,1> coeffs_p;
-    xt::xtensor<double,2> xgrid_p, ygrid_p, surface_p;
+    xt::xtensor<double,2> zsurface (const xt::xtensor<double,1>& coeffs, const xt::xtensor<double,2>& xgrid, const xt::xtensor<double,2>& ygrid);
+  // private:
+  //   xt::xtensor<double,1> coeffs_p;
+  //   xt::xtensor<double,2> xgrid_p, ygrid_p;
 
   };
 #endif

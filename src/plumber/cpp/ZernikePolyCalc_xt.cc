@@ -46,7 +46,7 @@ using namespace std;
     // xgrid: x coordinates of the grid
     // ygrid: y coordinates of the grid
     // return: Zernike surface
-    xt::xtensor<double,2> ZernikePolyCalcXT::zsurface (xt::xtensor<double,1>& coeffs, xt::xtensor<double,2>& xgrid, xt::xtensor<double,2>& ygrid)
+    xt::xtensor<double,2> ZernikePolyCalcXT::zsurface (const xt::xtensor<double,1>& coeffs, const xt::xtensor<double,2>& xgrid, const xt::xtensor<double,2>& ygrid)
     {
         xt::xtensor<double,1> c = xt::zeros<double>({67});
         auto coeffs_shape = coeffs.size();
