@@ -63,6 +63,16 @@ using namespace xt;
     }
     ~ZernikePolyCalcXT(){};
     xt::xtensor<double,2> zsurface (const xt::xtensor<double,1>& coeffs, const xt::xtensor<double,2>& xgrid, const xt::xtensor<double,2>& ygrid);
+    xt::xtensor<double,2> powl (const xt::xtensor<double,2>& base, const int& exponent)
+    {
+        if (exponent == 0){
+            return xt::ones_like(base) ;}
+        else if (exponent == 1){
+            return base ;}
+        else if ((exponent & 1) != 0){
+            return base * xt::pow(base * base, exponent / 2);}
+        else{return xt::pow(base * base, exponent / 2) ;}
+    };
   // private:
   //   xt::xtensor<double,1> coeffs_p;
   //   xt::xtensor<double,2> xgrid_p, ygrid_p;
