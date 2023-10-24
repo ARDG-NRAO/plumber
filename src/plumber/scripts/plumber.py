@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 
 import click
-from plumber.image import parse_image
-from plumber.zernike import get_zcoeffs, zernikeBeam
+from plumber.zernike import zernikeBeam
+from plumber.parsing import CSVParser, ImageParser
+from plumber.telescope import TelescopeInfo
 #from plumber.parang_finder import parallctic_angle
 
 import logging
@@ -28,14 +29,12 @@ ctx = dict(help_option_names=['-h', '--help'])
 @click.argument('CSV', type=click.File())
 @click.option('-a', '--padding', type=int, default=8, help='Padding factor for aperture, affects smoothness of output beam', show_default=True)
 @click.option('-d', '--dish-dia', type=float, default=None, help='Diameter of the antenna dish. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified.')
-@click.option('-l', '--linear', is_flag=True, help='Specifies if the telescope has linear feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
-@click.option('-c', '--circular', is_flag=True, help='Specifies if the telescope has circular feeds. If not one of VLA, ALMA, MeerKAT or GMRT, must be specified')
 @click.option('-I', '--stokesI', is_flag=True, help='Only generate the Stokes I beam, not the full Stokes beams')
 @click.option('-P', '--parallel', is_flag=True, help='Use parallel processing (no MPI) to speed things up')
 @click.option('-p', '--parang', type=float, default=0, help='Parallactic angle at which to generate the PB', show_default=True)
 @click.option('--parang-file', type=click.Path(exists=True), help='Pass a file containing a list of parallactic angles and weights')
 @click.option('--scale', nargs=2, type=float, help='X and Y scaling factors for number of pixels', default=[None, None], show_default=True)
-def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel, parang, parang_file, scale):
+def main(imagename, csv, padding, dish_dia, stokesi, parallel, parang, parang_file, scale):
     """
     Given the input image and the coefficient CSV file, generate the full Stokes
     primary beam at the image centre frequency. If the input is a cube, a
@@ -55,25 +54,46 @@ def main(imagename, csv, padding, dish_dia, linear, circular, stokesi, parallel,
     The eta column in the CSV is optional.
     """
 
-    islinear = None
-    if linear is True:
-        islinear = True
+    csv_parser = CSVParser()
+    image_parser = ImageParser()
+    telescope_info = TelescopeInfo()
 
     #parang = sorted(parang)
     #if len(parang) > 2:
     #    raise ValueError(f"Either pass in a single PA or two values of PA. Currently set to {parang}")
 
-    imsize, imfreq, is_stokes_cube = parse_image(imagename)
-    zdflist, zfreqlist, nstokes = get_zcoeffs(csv, imfreq)
+    telescope = image_parser.get_telescope(imagename)
+    imsize, imfreq, is_stokes_cube = image_parser.parse_image(imagename)
+
+    print(f"Telescope is {telescope}")
+
+    # Given the telescope name, figure out it's properties
+    telescope_info.telescope_name = telescope
+    telescope_info.get_feed_basis()
+
+    if dish_dia is None:
+        telescope_info.get_dish_diameter()
+    else:
+        telescope_info.dish_diameter = dish_dia
+
+    # XXX need to implement - this is a dummy function for now
+    # XXX Need to fix the zb.initialize call below to reflect removing the telescope functionality
+    # This needs to be specifiable on the command line as well, to break MeerKAT L-Band/UHF ambiguity.
+    # And similar ambiguity for other instruments like VLA
+    telescope_info.get_band(imfreq)
+
+
+    df = csv_parser.csv_to_df(csv.name)
+    zdflist, zfreqlist, nstokes = csv_parser.get_zcoeffs(df, imfreq)
 
     logger.info(f"Image is at {imfreq[0].value/1e6:.2f} MHz. Model PB will be generated at {zfreqlist[0]:.2f} MHz")
-    #logger.warn(f"The above frequency is the first channel frequency if the input image is a spectral cube")
 
     zb = zernikeBeam()
 
     for zdf in zdflist:
-        zb.initialize(zdf, imagename, padfac=padding, dish_dia=dish_dia,
-                            islinear=islinear, stokesi=stokesi, parang=parang,
+        zb.initialize(zdf, imagename, padfac=padding, dish_dia=telescope_info.dish_diameter,
+                            telescope = telescope_info.telescope_name,
+                            islinear=telescope_info.is_linear, stokesi=stokesi, parang=parang,
                             parang_file=parang_file, parallel=parallel,
                             scale=scale)
 

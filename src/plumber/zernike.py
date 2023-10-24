@@ -25,53 +25,14 @@ logger = logging.getLogger(__name__)
 logger.setLevel('INFO')
 
 from plumber.misc import wipe_file, make_unique
-from plumber.image import parse_image
+from plumber.parsing import ImageParser
 
 from casatasks import immath, imregrid
 from casatools import image
 ia = image()
 
-# Use up to 4 concunrrent processes
+# Use up to 4 concunrrent processes -- one for each Stokes
 NCPU = min(multiprocessing.cpu_count(), 4)
-
-
-def get_zcoeffs(csv: str, imfreq: float) -> Union[pd.Dataframe, float, int]:
-    """
-    Given the input frequency of the image, returns the Pandas dataframe with
-    the coefficients corresponding to the input frequency. The frequencies in
-    the input CSV file are expected to be in MHz.
-
-    Inputs:
-    csv         Input CSV filename, string
-    imfreq      Image frequency in MHz, float
-
-    Returns:
-    zdf         Dataframe containing the subset of the CSV file which is closest
-                to imfreq.
-    zfreq       Frequency of the coefficients in MHz, float
-    nstokes     Number of stokes in the CSV, integer
-    """
-
-    zdflist = []
-    freqlist = []
-
-    df = pd.read_csv(csv, skipinitialspace=True)
-    nstokes = df['#stokes'].unique().size
-    freqs = df['freq'].unique()
-
-    #imfreq is an array astropy.units, so convert to right unit and grab
-    #numerical value
-    for ifreq in imfreq:
-        idx = np.argmin(np.abs(freqs - ifreq.to(u.MHz).value))
-        zfreq = freqs[idx]
-
-        zdf = df[df['freq'] == zfreq]
-
-        zdflist.append(zdf)
-        freqlist.append(zfreq)
-
-    return zdflist, freqlist, nstokes
-
 
 
 class zernikeBeam():
@@ -102,7 +63,7 @@ class zernikeBeam():
         self.oversamp = 20
 
 
-    def initialize(self, df, templateim, padfac=8, dish_dia=[], islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
+    def initialize(self, df, templateim, padfac=8, dish_dia=[], telescope=None, islinear=None, stokesi=False, parang=None, parang_file=None, parallel=False, scale=None):
         """
         Initialize the class with an input DataFrame, and optionally padding
         factor for the FFT.
@@ -119,13 +80,11 @@ class zernikeBeam():
         """
 
         self.df = df
-        self.telescope = self.get_telescope(templateim)
+        self.telescope = telescope
         self.eta = [1., 1.]
 
         self.dish_dia = dish_dia
-        self.get_dish_diameter()
         self.islinear = islinear
-        self.get_feed_basis()
 
         self.padfac = int(padfac)
         self.parallel = parallel
@@ -145,79 +104,6 @@ class zernikeBeam():
         self.get_npix_aperture(templateim)
 
 
-    def get_telescope(self, templateim: str) -> str:
-        """
-        Get the telescope name from the image header
-
-        Input:
-        templateim      Name of the input template image, string
-
-        Returns:
-        telescope       Name of the input telescope
-        """
-
-        ia.open(templateim)
-        csys = ia.coordsys().torecord()
-        ia.close()
-
-        telescope = csys['telescope']
-        logger.debug(f"Telescope is {telescope}.")
-
-        return csys['telescope']
-
-
-    def get_feed_basis(self) -> None:
-        """
-        Get the feed basis, from the telescope name.
-        """
-
-        if self.islinear is not None:
-            outstr = 'circular' if self.islinear == False else 'linear'
-            logger.info(f"Overriding automatic determination of feed basis, using user supplied value of {outstr}")
-
-        if "vla" in self.telescope.lower():
-            self.islinear = False
-        elif "meerkat" in self.telescope.lower():
-            self.islinear = True
-        elif "alma" in self.telescope.lower():
-            self.islinear = True
-        elif "gmrt" in self.telescope.lower() and self.freq < 9e2:
-            self.islinear = False
-        elif "gmrt" in self.telescope.lower() and self.freq >= 9e2:
-            self.islinear = True
-        else:
-            raise ValueError("Unable to determine feed basis, unknown telescope. "
-            "Please pass in the feed basis via the islinear paramter to "
-            ".initialize()")
-
-
-    def get_dish_diameter(self) -> None:
-        """
-        Get the dish diameter for different instruments.
-
-        Returns:
-        None, sets self.dish_dia in place
-        """
-
-        if self.dish_dia is not None:
-            logger.info(f"Overriding automatic determination of telescope dish "
-                        "diameter. Using the input of {self.dish_dia} m")
-            return
-
-        if 'vla' in self.telescope.lower():
-            self.dish_dia = [25, 25]
-        elif 'meerkat' in self.telescope.lower():
-            #self.dish_dia = 13.5
-            self.dish_dia = [13.5, 13.5]
-        elif 'alma' in self.telescope.lower():
-            self.dish_dia = [12, 12]
-        elif 'gmrt' in self.telescope.lower():
-            self.dish_dia = [45, 45]
-        else:
-            raise ValueError('Unknown telescope type. Please initialize the '
-                             'class with the dish_diameter value in metres.')
-
-        logger.info(f"Using dish diameter of ({self.dish_dia[0]}m, {self.dish_dia[1]}m) for telescope {self.telescope}.")
 
 
 
@@ -263,7 +149,8 @@ class zernikeBeam():
         cdelt           The pixel delta in lambda, float
         """
 
-        imsize, imfreq, is_stokes_cube = parse_image(templateim)
+        image_parser = ImageParser()
+        imsize, imfreq, is_stokes_cube = image_parser.parse_image(templateim)
         freq = imfreq[0].value
 
         ia.open(templateim)
